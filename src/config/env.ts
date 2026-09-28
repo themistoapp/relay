@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { timeZoneProblem } from "../engine/ops.js";
 
 const optionalUrl = z
   .string()
@@ -20,7 +21,11 @@ const envSchema = z.object({
   PUBLIC_PORT: z.coerce.number().int().positive().default(8081),
   // How endpoints are reached from outside, for the URLs shown in the UI.
   PUBLIC_BASE_URL: z.string().url().default("http://localhost:8081"),
-  TZ: z.string().min(1).default("Europe/London"),
+  // A full zone name like Europe/London (handles GMT/BST by itself). Abbreviations are refused.
+  TZ: z.string().min(1).default("Europe/London").superRefine((tz, ctx) => {
+    const problem = timeZoneProblem(tz);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  }),
   // Which proxies may set X-Forwarded-For (proxy-addr syntax). The default trusts private networks,
   // i.e. Nginx Proxy Manager on the same host or LAN, so rate limits and logs see real client IPs.
   TRUST_PROXY: z.string().default("loopback,linklocal,uniquelocal"),

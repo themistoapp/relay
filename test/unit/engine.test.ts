@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parsePath, resolve, rowBase, relativeToRow, childPath, formatPath, leafName } from "../../src/engine/paths.js";
 import { inferShape, countLeaves } from "../../src/engine/shape.js";
-import { OPS, compare, toDate } from "../../src/engine/ops.js";
+import { OPS, compare, toDate, timeZoneProblem } from "../../src/engine/ops.js";
 import { renderOutput, previewFields, evalField, type EndpointDefinition, type HistorySource, type RenderContext, type Snapshot } from "../../src/engine/render.js";
 import { diffJson } from "../../src/engine/diff.js";
 
@@ -238,5 +238,23 @@ describe("diff", () => {
       "$.c.x": { kind: "removed", was: 1 },
       "$.d": { kind: "added" },
     });
+  });
+});
+
+describe("time zones", () => {
+  const fmt = (tz: string) => OPS.date_format.fn!("2026-09-28T06:10:00Z", { format: "time", tz }, { tz: "Europe/London", now: 0 });
+
+  it("uses full zone names, including British Summer Time for Europe/London", () => {
+    expect(fmt("Europe/London")).toBe("07:10");
+    expect(fmt("")).toBe("07:10");
+    expect(fmt("UTC")).toBe("06:10");
+    expect(OPS.date_format.fn!("2026-12-28T06:10:00Z", { format: "time", tz: "Europe/London" }, { tz: "UTC", now: 0 })).toBe("06:10");
+  });
+
+  it("refuses abbreviations, which ICU maps to surprising places (BST is Bangladesh)", () => {
+    expect(() => fmt("BST")).toThrow(/Europe\/London, which switches between GMT and BST/);
+    expect(() => fmt("EST")).toThrow(/America\/New_York/);
+    expect(() => fmt("Mars/Olympus")).toThrow(/Unknown time zone/);
+    expect(timeZoneProblem("Europe/London")).toBeNull();
   });
 });

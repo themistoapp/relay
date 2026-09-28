@@ -2,6 +2,7 @@
   import { OPS, OP_GROUPS, OP_LIST, argsWithDefaults, describeStep, type OpMeta } from "$engine/ops";
   import { isListPath, relativeToRow, rowBase } from "$engine/paths";
   import type { FieldDef, FieldPreview } from "$engine/render";
+  import { meta as server } from "../../lib/state.svelte";
 
   let {
     field = $bindable(),
@@ -114,6 +115,8 @@
             <select class="input sm" value={val} onchange={(e) => (step.args = { ...step.args, [a.name]: e.currentTarget.value })}>
               {#each a.options ?? [] as o}<option value={o.value}>{o.label}</option>{/each}
             </select>
+          {:else if a.type === "timezone"}
+            <input class="input sm mono" list="relay-timezones" value={val} placeholder="{server.tz || 'Europe/London'} (server)" oninput={(e) => (step.args = { ...step.args, [a.name]: e.currentTarget.value.trim() })} />
           {:else if a.type === "rowpath"}
             <select class="input sm mono" value={val} onchange={(e) => (step.args = { ...step.args, [a.name]: e.currentTarget.value })}>
               {#each rowPaths as p}<option value={p}>{p.replace(/^\$\.?/, "")}</option>{/each}

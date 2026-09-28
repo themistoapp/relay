@@ -33,6 +33,11 @@
   }
 </script>
 
+<!-- Every real zone name, for the "Format date" step's time zone box. -->
+<datalist id="relay-timezones">
+  {#each Intl.supportedValuesOf("timeZone") as tz}<option value={tz}></option>{/each}
+</datalist>
+
 <section class="card glass">
   <div class="panel-head">
     <div>

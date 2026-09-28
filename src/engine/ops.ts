@@ -12,7 +12,7 @@ export interface OpStep {
 export interface ArgSpec {
   name: string;
   label: string;
-  type: "number" | "text" | "select" | "rowpath";
+  type: "number" | "text" | "select" | "rowpath" | "timezone";
   default: number | string;
   options?: { value: string; label: string }[];
 }
@@ -82,6 +82,32 @@ export function toDate(x: unknown): Date {
   else ms = NaN;
   if (!Number.isFinite(ms)) throw new OpError(`Not a date: ${JSON.stringify(x)}`);
   return new Date(ms);
+}
+
+// ICU still accepts old abbreviations, but not the way people mean them: "BST" is Bangladesh
+// (Asia/Dhaka, UTC+6), "EST" is Panama (no daylight saving), "IST" is India. Only full zone
+// names like Europe/London are allowed, which also handle GMT/BST switching by themselves.
+const ABBREVIATION_HINTS: Record<string, string> = {
+  BST: "Europe/London", GMT: "Europe/London (or UTC)", WET: "Europe/Lisbon", CET: "Europe/Paris", CEST: "Europe/Paris",
+  EET: "Europe/Athens", EST: "America/New_York", EDT: "America/New_York", CST: "America/Chicago", CDT: "America/Chicago",
+  MST: "America/Denver", MDT: "America/Denver", PST: "America/Los_Angeles", PDT: "America/Los_Angeles",
+  IST: "Asia/Kolkata or Europe/Dublin", AEST: "Australia/Sydney", AEDT: "Australia/Sydney", JST: "Asia/Tokyo",
+};
+
+/** Why a time zone name can't be used, or null if it's fine. */
+export function timeZoneProblem(tz: string): string | null {
+  const t = tz.trim();
+  if (t === "UTC" || t === "Etc/UTC") return null;
+  if (!t.includes("/")) {
+    const hint = ABBREVIATION_HINTS[t.toUpperCase()];
+    return `"${t}" isn't a time zone name. Use a full name like ${hint ?? "Europe/London"}${t.toUpperCase() === "BST" || t.toUpperCase() === "GMT" ? ", which switches between GMT and BST by itself" : ""}.`;
+  }
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: t });
+    return null;
+  } catch {
+    return `Unknown time zone: ${t}`;
+  }
 }
 
 function dateParts(d: Date, tz: string) {
@@ -249,7 +275,7 @@ const ops: OpMeta[] = [
   },
   {
     id: "date_format", label: "Format date", group: "Text & dates", kind: "map", help: "Read a date or timestamp and write it another way.",
-    args: [{ name: "format", label: "As", type: "select", default: "datetime", options: DATE_FORMATS }, { name: "tz", label: "Time zone", type: "text", default: "" }],
+    args: [{ name: "format", label: "As", type: "select", default: "datetime", options: DATE_FORMATS }, { name: "tz", label: "Time zone", type: "timezone", default: "" }],
     describe: (a) => `date as ${DATE_FORMATS.find((f) => f.value === a.format)?.label ?? a.format}`,
     fn: (x, a, env) => {
       if (x === null || x === undefined) return x;
@@ -262,7 +288,9 @@ const ops: OpMeta[] = [
         case "relative": return relative(d.getTime(), env.now);
       }
       let p;
-      try { p = dateParts(d, tz); } catch { throw new OpError(`Unknown time zone: ${tz}`); }
+      const problem = timeZoneProblem(tz);
+      if (problem) throw new OpError(problem);
+      p = dateParts(d, tz);
       if (a.format === "date") return `${p.year}-${p.month}-${p.day}`;
       if (a.format === "time") return `${p.hour}:${p.minute}`;
       return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
