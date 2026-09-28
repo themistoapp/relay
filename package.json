@@ -1,0 +1,39 @@
+{
+  "name": "relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pull APIs on a schedule, pick and transform their data, and re-serve it as new APIs.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"tsx watch --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/index.ts\" \"vite\"",
+    "build": "vite build && tsc -p tsconfig.build.json && node scripts/stamp-build.mjs",
+    "start": "node --disable-warning=ExperimentalWarning dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit && svelte-check --tsconfig ./web/tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/static": "^10.1.5",
+    "croner": "^10.0.1",
+    "fastify": "^5.12.5",
+    "pino": "^10.3.1",
+    "proxy-addr": "^2.0.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@types/node": "^26.6.3",
+    "@types/proxy-addr": "^2.0.3",
+    "concurrently": "^10.0.5",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  }
+}
