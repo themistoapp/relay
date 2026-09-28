@@ -2,6 +2,8 @@
   "name": "relay",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "repository": "github:themistoapp/relay",
   "description": "Pull APIs on a schedule, pick and transform their data, and re-serve it as new APIs.",
   "type": "module",
   "engines": {

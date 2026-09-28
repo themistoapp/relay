@@ -1,9 +1,9 @@
 services:
   relay:
     build:
-      # Portainer builds straight from the private repo, the same way as Tailwind: a fine-grained
-      # token scoped to themistoapp/relay with Contents: Read only, set as GITHUB_PAT in the stack's env.
-      context: https://${GITHUB_PAT}@github.com/themistoapp/relay.git#main
+      # Builds straight from GitHub, so this file works on its own (e.g. pasted into Portainer).
+      # In a clone of the repo you can use `context: .` instead to build your local copy.
+      context: https://github.com/themistoapp/relay.git#main
     image: relay:latest
     container_name: relay
     restart: unless-stopped
