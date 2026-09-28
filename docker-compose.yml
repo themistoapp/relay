@@ -1,0 +1,39 @@
+services:
+  relay:
+    build:
+      # Portainer builds straight from the private repo, the same way as Tailwind: a fine-grained
+      # token scoped to themistoapp/relay with Contents: Read only, set as GITHUB_PAT in the stack's env.
+      context: https://${GITHUB_PAT}@github.com/themistoapp/relay.git#main
+    image: relay:latest
+    container_name: relay
+    restart: unless-stopped
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # Back this up somewhere safe: stored upstream tokens can't be decrypted without it.
+      - APP_SECRET=${APP_SECRET}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8081}
+      - TZ=${TZ:-Europe/London}
+      # Behind Cloudflare, use the real visitor IP for rate limits and logs.
+      - CLIENT_IP_HEADER=${CLIENT_IP_HEADER:-}
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+      - ALERT_AFTER_FAILURES=${ALERT_AFTER_FAILURES:-3}
+      - BACKUP_KEEP=${BACKUP_KEEP:-7}
+    ports:
+      # Admin UI. To keep it off every interface but the LAN one, prefix the host IP:
+      # "192.168.1.2:8080:8080".
+      - "${ADMIN_HOST_PORT:-8080}:8080"
+      # Re-served endpoints. Nginx Proxy Manager forwards your public hostname here.
+      - "${PUBLIC_HOST_PORT:-8081}:8081"
+    volumes:
+      - relay-data:/data
+    # If Nginx Proxy Manager runs in Docker on this host, you can instead join its network and proxy
+    # to relay:8081 by name, then drop the 8081 port mapping above:
+    # networks: [npm]
+
+volumes:
+  relay-data:
+
+# networks:
+#   npm:
+#     external: true
+#     name: nginx-proxy-manager_default
