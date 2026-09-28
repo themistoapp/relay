@@ -49,7 +49,7 @@ Set these in `.env` (or your stack's environment). Only the first two are requir
 | --- | --- | --- |
 | `ADMIN_PASSWORD` | (none) | The admin UI password (8+ characters). |
 | `APP_SECRET` | (none) | Encrypts stored upstream tokens and signs the login cookie (16+ characters, e.g. `openssl rand -base64 32`). **Back it up.** Without it, stored tokens can't be decrypted and have to be re-entered. |
-| `PUBLIC_BASE_URL` | `http://localhost:8081` | The public address of port 8081, e.g. `https://api.example.com`. Only used to show full URLs in the UI. |
+| `PUBLIC_BASE_URL` | (empty) | The public address of port 8081, e.g. `https://api.example.com`. Only used to show full URLs in the UI. When empty, Relay uses the address you opened the admin UI on, with `PUBLIC_HOST_PORT`. |
 | `TZ` | `Europe/London` | Time zone for schedules, "daily" pulls and history windows. |
 | `CLIENT_IP_HEADER` | (empty) | Set to `cf-connecting-ip` when traffic comes through Cloudflare, so rate limits and logs see the visitor rather than a Cloudflare edge. |
 | `TRUST_PROXY` | `loopback,linklocal,uniquelocal` | Which proxies may set `X-Forwarded-For`. The default trusts private networks (NPM on the same host or LAN). |

@@ -328,3 +328,19 @@ describe("the whole flow", () => {
     expect((await admin("DELETE", `/sources/${sourceId}?force=1`)).status).toBe(200);
   });
 });
+
+describe("public address shown in the UI", () => {
+  it("uses PUBLIC_BASE_URL when set", async () => {
+    const r = await relay.admin.inject({ url: "/admin/api/meta", headers: { cookie } });
+    expect(r.json()).toMatchObject({ publicBaseUrl: "https://api.example.test", publicBaseUrlSet: true });
+  });
+
+  it("otherwise uses the admin UI's host with the public host port", async () => {
+    const bare = createRelay(loadEnv({ ADMIN_PASSWORD: env.ADMIN_PASSWORD, APP_SECRET: env.APP_SECRET, PUBLIC_HOST_PORT: "1099" } as NodeJS.ProcessEnv), { dbFile: ":memory:", logger: pino({ level: "silent" }) });
+    const login = await bare.admin.inject({ method: "POST", url: "/admin/api/login", payload: { password: env.ADMIN_PASSWORD } });
+    const c = (login.headers["set-cookie"] as string).split(";")[0];
+    const r = await bare.admin.inject({ url: "/admin/api/meta", headers: { cookie: c, host: "192.168.1.2:1098" } });
+    expect(r.json()).toMatchObject({ publicBaseUrl: "http://192.168.1.2:1099", publicBaseUrlSet: false });
+    await bare.close();
+  });
+});

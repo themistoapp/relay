@@ -24,6 +24,46 @@
   const editable = (e: Endpoint) => JSON.stringify({ slug: e.slug, name: e.name, definition: e.definition, enabled: e.enabled, access: e.access, corsOrigins: e.corsOrigins, rateLimit: e.rateLimit, rateWindow: e.rateWindow, rateBy: e.rateBy, cacheTtl: e.cacheTtl });
   const dirty = $derived(!!draft && editable(draft) !== savedJson);
 
+  // Unsaved edits are kept in this browser, so a page reload doesn't lose them. They're only
+  // restored onto the same saved version they were made against.
+  const draftKey = $derived(`relay-draft-${id}`);
+  let restored = $state(false);
+  function readStoredDraft(version: number): Partial<Endpoint> | null {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (d.version === version) return d.draft;
+      localStorage.removeItem(draftKey);
+    } catch {
+      /* storage unavailable: nothing to restore */
+    }
+    return null;
+  }
+  $effect(() => {
+    if (!draft) return;
+    const json = editable(draft);
+    try {
+      if (json !== savedJson) localStorage.setItem(draftKey, JSON.stringify({ version: draft.version, draft: JSON.parse(json) }));
+      else localStorage.removeItem(draftKey);
+    } catch {
+      /* storage unavailable or full */
+    }
+  });
+
+  async function discard() {
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      /* ignore */
+    }
+    const e = await api.get<Endpoint>(`/endpoints/${id}`);
+    draft = e;
+    savedJson = editable(e);
+    restored = false;
+    say("Changes discarded");
+  }
+
   export async function loadShape(sourceId: number) {
     if (sourceId in shapes) return;
     shapes[sourceId] = null;
@@ -34,10 +74,13 @@
   async function load() {
     try {
       const [e, s] = await Promise.all([api.get<Endpoint>(`/endpoints/${id}`), api.get<Source[]>("/sources")]);
-      draft = e;
       savedJson = editable(e);
+      const stored = readStoredDraft(e.version);
+      draft = stored ? { ...e, ...stored } : e;
+      restored = !!stored && editable(draft) !== savedJson;
+      if (restored) say("Restored your unsaved changes");
       sources = s;
-      for (const sid of new Set(e.definition.fields.map((f) => f.sourceId))) loadShape(sid);
+      for (const sid of new Set(draft.definition.fields.map((f) => f.sourceId))) loadShape(sid);
     } catch (err) {
       loadError = (err as Error).message;
     }
@@ -45,11 +88,6 @@
 
   onMount(() => {
     load();
-    const warn = (ev: BeforeUnloadEvent) => {
-      if (dirty) ev.preventDefault();
-    };
-    addEventListener("beforeunload", warn);
-    return () => removeEventListener("beforeunload", warn);
   });
 
   // Live preview of the unsaved definition, debounced.
@@ -76,6 +114,7 @@
       const e = await api.put<Endpoint>(`/endpoints/${id}`, body);
       draft = { ...draft, ...e };
       savedJson = editable(draft);
+      restored = false;
       say(draft.enabled ? "Saved. Live now." : "Saved");
     } catch (e) {
       say((e as Error).message, true);
@@ -102,7 +141,10 @@
     {#if draft}
       <div class="row">
         {#if draft.enabled}<span class="pill ok"><span class="dot"></span>Live</span>{:else}<span class="pill">Off</span>{/if}
-        {#if dirty}<span class="pill warn">Unsaved changes</span>{/if}
+        {#if dirty}
+          <span class="pill warn">{restored ? "Restored unsaved changes" : "Unsaved changes"}</span>
+          <button class="btn ghost" type="button" onclick={discard}>Discard</button>
+        {/if}
         <button class="btn primary" type="button" onclick={save} disabled={!dirty || saving}>{#if saving}<span class="spin"></span>{/if} Save</button>
       </div>
     {/if}

@@ -11,7 +11,10 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       # Back this up somewhere safe: stored upstream tokens can't be decrypted without it.
       - APP_SECRET=${APP_SECRET}
-      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8081}
+      # Where endpoints are reached from outside, e.g. https://api.example.com. Leave unset to use
+      # this host's address with PUBLIC_HOST_PORT.
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - PUBLIC_HOST_PORT=${PUBLIC_HOST_PORT:-8081}
       - TZ=${TZ:-Europe/London}
       # Behind Cloudflare, use the real visitor IP for rate limits and logs.
       - CLIENT_IP_HEADER=${CLIENT_IP_HEADER:-}

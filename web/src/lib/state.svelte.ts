@@ -1,6 +1,6 @@
 export const auth = $state({ signedIn: null as boolean | null });
 
-export const meta = $state({ publicBaseUrl: "", tz: "", builtAt: null as string | null, alertsOn: false, backups: [] as string[] });
+export const meta = $state({ publicBaseUrl: "", publicBaseUrlSet: true, tz: "", builtAt: null as string | null, alertsOn: false, backups: [] as string[] });
 
 export const toast = $state({ text: "", bad: false, show: false });
 let timer: ReturnType<typeof setTimeout> | undefined;

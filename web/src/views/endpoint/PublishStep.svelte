@@ -98,6 +98,7 @@
       <code>{url}</code>
       <button class="btn sm" type="button" onclick={() => copy(url, "URL")}>Copy</button>
     </div>
+    {#if !meta.publicBaseUrlSet}<p class="hint">This is your server's own address. Once endpoints have a public address (e.g. through Nginx Proxy Manager), set <span class="mono">PUBLIC_BASE_URL</span> so this shows it instead.</p>{/if}
     {#if dirty}<p class="note warn">You have unsaved changes. They won't be served until you save. <button class="btn sm primary" type="button" onclick={save}>Save now</button></p>{/if}
     {#if preview?.errors.length}<p class="note bad">{preview.errors.length} field{preview.errors.length === 1 ? " has" : "s have"} a problem and will be served as null. See the Shape step.</p>{/if}
 

@@ -82,8 +82,13 @@ export function buildAdminServer(deps: AdminDeps): FastifyInstance {
 
   app.get("/admin/api/session", async (req) => ({ signedIn: isSignedIn(req) }));
 
-  app.get("/admin/api/meta", async () => ({
-    publicBaseUrl: env.PUBLIC_BASE_URL.replace(/\/$/, ""),
+  app.get("/admin/api/meta", async (req) => ({
+    // Without PUBLIC_BASE_URL, assume endpoints are reached on the same host as this admin UI,
+    // on the public port as mapped by Docker (e.g. http://192.168.1.2:1099).
+    publicBaseUrl: env.PUBLIC_BASE_URL
+      ? env.PUBLIC_BASE_URL.replace(/\/$/, "")
+      : `${req.protocol}://${req.hostname.includes(":") && !req.hostname.startsWith("[") ? `[${req.hostname}]` : req.hostname}:${env.PUBLIC_HOST_PORT ?? env.PUBLIC_PORT}`,
+    publicBaseUrlSet: !!env.PUBLIC_BASE_URL,
     tz: env.TZ,
     builtAt: buildTime(),
     alertsOn: !!env.ALERT_WEBHOOK_URL,

@@ -20,7 +20,10 @@ const envSchema = z.object({
   // Only the re-served endpoints (/v1/:slug) and /healthz. This is the port to point a reverse proxy at.
   PUBLIC_PORT: z.coerce.number().int().positive().default(8081),
   // How endpoints are reached from outside, for the URLs shown in the UI.
-  PUBLIC_BASE_URL: z.string().url().default("http://localhost:8081"),
+  // Empty (the default) means: the address you opened the admin UI on, with PUBLIC_HOST_PORT.
+  PUBLIC_BASE_URL: z.string().default("").refine((v) => v === "" || /^https?:\/\/[^\s]+$/.test(v), "must be an http(s) URL if set"),
+  // The host port Docker maps to PUBLIC_PORT. Only used to guess PUBLIC_BASE_URL when it isn't set.
+  PUBLIC_HOST_PORT: z.coerce.number().int().positive().optional(),
   // A full zone name like Europe/London (handles GMT/BST by itself). Abbreviations are refused.
   TZ: z.string().min(1).default("Europe/London").superRefine((tz, ctx) => {
     const problem = timeZoneProblem(tz);
