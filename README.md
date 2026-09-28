@@ -83,7 +83,7 @@ If the hostname goes through Cloudflare, set `CLIENT_IP_HEADER=cf-connecting-ip`
 ## Calling an endpoint
 
 ```sh
-curl https://api.example.com/v1/fuel-kimbolton -H "X-Api-Key: rly_…"
+curl https://api.example.com/v1/fuel-prices -H "X-Api-Key: rly_…"
 ```
 
 The key can also go in the URL as `?key=`. Responses carry:

@@ -62,7 +62,7 @@ afterAll(async () => {
 });
 
 const SOURCE = () => ({
-  name: "Kimbolton fuel",
+  name: "Local fuel",
   method: "GET",
   url: upstreamUrl,
   headers: [],
@@ -137,7 +137,7 @@ describe("the whole flow", () => {
 
   it("keeps the stored token when a source is edited without re-entering it", async () => {
     const { authSecret: _, ...rest } = SOURCE();
-    const r = await admin("PUT", `/sources/${sourceId}`, { ...rest, name: "Kimbolton fuel prices" });
+    const r = await admin("PUT", `/sources/${sourceId}`, { ...rest, name: "Local fuel prices" });
     expect(r.body.hasSecret).toBe(true);
     const test = await admin("POST", "/sources/test", { ...rest, id: sourceId });
     expect(test.body.ok).toBe(true);
@@ -172,7 +172,7 @@ describe("the whole flow", () => {
     expect(series.body.points.map((p: any) => p.v)).toEqual([139.9, 139.9, 138.9]);
 
     const csv = await admin("GET", `/sources/${sourceId}/export?format=csv&what=series&path=${encodeURIComponent("$.stations[0].prices.E10")}`);
-    expect(csv.headers["content-disposition"]).toMatch(/attachment; filename="kimbolton-fuel-prices-series-/);
+    expect(csv.headers["content-disposition"]).toMatch(/attachment; filename="local-fuel-prices-series-/);
     expect(csv.body.trim().split("\n")).toHaveLength(4);
   });
 
@@ -182,8 +182,8 @@ describe("the whole flow", () => {
   });
 
   it("builds an endpoint and previews it live", async () => {
-    const created = await admin("POST", "/endpoints", { name: "Fuel Kimbolton" });
-    expect(created.body).toMatchObject({ slug: "fuel-kimbolton", enabled: false, access: "key" });
+    const created = await admin("POST", "/endpoints", { name: "Fuel prices" });
+    expect(created.body).toMatchObject({ slug: "fuel-prices", enabled: false, access: "key" });
     endpointId = created.body.id;
 
     const definition = {
@@ -211,7 +211,7 @@ describe("the whole flow", () => {
       ...created.body,
       definition,
       enabled: true,
-      corsOrigins: ["https://tailwind.themisto.app"],
+      corsOrigins: ["https://app.example.com"],
       rateLimit: 3,
       rateWindow: "minute",
       rateBy: "key",
@@ -224,7 +224,7 @@ describe("the whole flow", () => {
   });
 
   it("serves the endpoint only with a valid key", async () => {
-    const noKey = await relay.public.inject({ url: "/v1/fuel-kimbolton" });
+    const noKey = await relay.public.inject({ url: "/v1/fuel-prices" });
     expect(noKey.statusCode).toBe(401);
 
     const k = await admin("POST", `/endpoints/${endpointId}/keys`, { label: "Home Assistant" });
@@ -232,36 +232,36 @@ describe("the whole flow", () => {
     expect(apiKey).toMatch(/^rly_/);
     expect(k.body.apiKey.hint).toBe(apiKey.slice(-4));
 
-    const wrong = await relay.public.inject({ url: "/v1/fuel-kimbolton", headers: { "x-api-key": "rly_nope" } });
+    const wrong = await relay.public.inject({ url: "/v1/fuel-prices", headers: { "x-api-key": "rly_nope" } });
     expect(wrong.statusCode).toBe(401);
 
-    const ok = await relay.public.inject({ url: "/v1/fuel-kimbolton", headers: { "x-api-key": apiKey } });
+    const ok = await relay.public.inject({ url: "/v1/fuel-prices", headers: { "x-api-key": apiKey } });
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ cheapest_e10: 1.389, nearest: [{ name: "BP", miles: 1.4 }, { name: "Tesco", miles: 7.7 }] });
     expect(ok.headers["x-relay-fetched-at"]).toBeDefined();
     expect(ok.headers["x-relay-stale"]).toBeUndefined();
     expect(ok.headers["cache-control"]).toBe("no-store");
 
-    const viaQuery = await relay.public.inject({ url: `/v1/fuel-kimbolton?key=${apiKey}` });
+    const viaQuery = await relay.public.inject({ url: `/v1/fuel-prices?key=${apiKey}` });
     expect(viaQuery.statusCode).toBe(200);
   });
 
   it("answers CORS only for allowed origins", async () => {
-    const allowed = await relay.public.inject({ method: "OPTIONS", url: "/v1/fuel-kimbolton", headers: { origin: "https://tailwind.themisto.app", "access-control-request-method": "GET" } });
+    const allowed = await relay.public.inject({ method: "OPTIONS", url: "/v1/fuel-prices", headers: { origin: "https://app.example.com", "access-control-request-method": "GET" } });
     expect(allowed.statusCode).toBe(204);
-    expect(allowed.headers["access-control-allow-origin"]).toBe("https://tailwind.themisto.app");
+    expect(allowed.headers["access-control-allow-origin"]).toBe("https://app.example.com");
     expect(allowed.headers["access-control-allow-headers"]).toMatch(/X-Api-Key/);
 
-    const denied = await relay.public.inject({ method: "OPTIONS", url: "/v1/fuel-kimbolton", headers: { origin: "https://evil.example", "access-control-request-method": "GET" } });
+    const denied = await relay.public.inject({ method: "OPTIONS", url: "/v1/fuel-prices", headers: { origin: "https://evil.example", "access-control-request-method": "GET" } });
     expect(denied.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
   it("rate limits per key and says when to retry", async () => {
     // The limit is 3 a minute and the key has made 2 calls already.
-    const third = await relay.public.inject({ url: "/v1/fuel-kimbolton", headers: { "x-api-key": apiKey } });
+    const third = await relay.public.inject({ url: "/v1/fuel-prices", headers: { "x-api-key": apiKey } });
     expect(third.statusCode).toBe(200);
     expect(third.headers["x-ratelimit-remaining"]).toBe("0");
-    const fourth = await relay.public.inject({ url: "/v1/fuel-kimbolton", headers: { "x-api-key": apiKey } });
+    const fourth = await relay.public.inject({ url: "/v1/fuel-prices", headers: { "x-api-key": apiKey } });
     expect(fourth.statusCode).toBe(429);
     expect(Number(fourth.headers["retry-after"])).toBeGreaterThan(0);
   });
@@ -270,7 +270,7 @@ describe("the whole flow", () => {
     await admin("PUT", `/endpoints/${endpointId}`, { ...(await admin("GET", `/endpoints/${endpointId}`)).body, rateLimit: 100 });
     failNext = 1;
     await admin("POST", `/sources/${sourceId}/pull`);
-    const r = await relay.public.inject({ url: "/v1/fuel-kimbolton", headers: { "x-api-key": apiKey } });
+    const r = await relay.public.inject({ url: "/v1/fuel-prices", headers: { "x-api-key": apiKey } });
     expect(r.statusCode).toBe(200);
     expect(r.headers["x-relay-stale"]).toBe("true");
     expect(r.json().cheapest_e10).toBe(1.389);
@@ -283,16 +283,16 @@ describe("the whole flow", () => {
 
     const keys = await admin("GET", `/endpoints/${endpointId}/keys`);
     await admin("DELETE", `/keys/${keys.body[0].id}`);
-    const r = await relay.public.inject({ url: "/v1/fuel-kimbolton", headers: { "x-api-key": apiKey } });
+    const r = await relay.public.inject({ url: "/v1/fuel-prices", headers: { "x-api-key": apiKey } });
     expect(r.statusCode).toBe(401);
   });
 
   it("serves public endpoints without a key, and hides disabled ones", async () => {
     const ep = (await admin("GET", `/endpoints/${endpointId}`)).body;
     await admin("PUT", `/endpoints/${endpointId}`, { ...ep, access: "public" });
-    expect((await relay.public.inject({ url: "/v1/fuel-kimbolton" })).statusCode).toBe(200);
+    expect((await relay.public.inject({ url: "/v1/fuel-prices" })).statusCode).toBe(200);
     await admin("PUT", `/endpoints/${endpointId}`, { ...ep, access: "public", enabled: false });
-    expect((await relay.public.inject({ url: "/v1/fuel-kimbolton" })).statusCode).toBe(404);
+    expect((await relay.public.inject({ url: "/v1/fuel-prices" })).statusCode).toBe(404);
     // The admin API isn't reachable on the public port at all.
     expect((await relay.public.inject({ url: "/admin/api/sources" })).statusCode).toBe(404);
   });
@@ -316,15 +316,15 @@ describe("the whole flow", () => {
     const imp = await admin("POST", "/config/import", cfg);
     expect(imp.body).toEqual({ sources: 1, endpoints: 1 });
     const eps = (await admin("GET", "/endpoints")).body;
-    expect(eps.map((e: any) => e.slug).sort()).toEqual(["fuel-kimbolton", "fuel-kimbolton-2"]);
-    const copy = eps.find((e: any) => e.slug === "fuel-kimbolton-2");
+    expect(eps.map((e: any) => e.slug).sort()).toEqual(["fuel-prices", "fuel-prices-2"]);
+    const copy = eps.find((e: any) => e.slug === "fuel-prices-2");
     expect(copy.definition.fields[0].sourceId).not.toBe(sourceId);
   });
 
   it("warns before deleting a source an endpoint uses", async () => {
     const r = await admin("DELETE", `/sources/${sourceId}`);
     expect(r.status).toBe(409);
-    expect(r.body.usedBy[0].slug).toBe("fuel-kimbolton");
+    expect(r.body.usedBy[0].slug).toBe("fuel-prices");
     expect((await admin("DELETE", `/sources/${sourceId}?force=1`)).status).toBe(200);
   });
 });

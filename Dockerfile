@@ -1,4 +1,4 @@
-# bookworm-slim (glibc), same base family as Tailwind. Node 24: node:sqlite is built in and
+# bookworm-slim (glibc). Node 24: node:sqlite is built in and
 # unflagged, so there's no native SQLite module to compile.
 FROM node:24-bookworm-slim AS builder
 WORKDIR /app

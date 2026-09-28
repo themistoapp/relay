@@ -57,7 +57,7 @@ export const slugSchema = z
   .string()
   .min(1, "Give the endpoint a path")
   .max(80)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers and single dashes, e.g. fuel-kimbolton");
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers and single dashes, e.g. fuel-prices");
 
 export const endpointSchema = z.object({
   slug: slugSchema,

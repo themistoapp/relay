@@ -269,7 +269,7 @@
     <form class="form" autocomplete="off" onsubmit={(e) => { e.preventDefault(); save(); }}>
       <div class="fld s6">
         <label for="src-name">Name</label>
-        <input class="input" id="src-name" bind:value={form.name} placeholder={hostName(form.url) || "e.g. Kimbolton fuel"} />
+        <input class="input" id="src-name" bind:value={form.name} placeholder={hostName(form.url) || "e.g. Local fuel"} />
       </div>
       <div class="fld s6">
         <label for="src-keep">Keep history for</label>
@@ -287,7 +287,7 @@
           <select class="input mono" bind:value={form.method} aria-label="HTTP method">
             {#each ["GET", "POST", "PUT", "PATCH"] as m}<option>{m}</option>{/each}
           </select>
-          <input class="input mono" id="src-url" type="url" required bind:value={form.url} placeholder="https://api.example.com/v1/prices?town=kimbolton" />
+          <input class="input mono" id="src-url" type="url" required bind:value={form.url} placeholder="https://api.example.com/v1/prices?town=example" />
         </div>
       </div>
       {#if form.method !== "GET"}

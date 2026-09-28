@@ -104,7 +104,7 @@ describe("ops", () => {
   it("compares numbers, numeric text and dates", () => {
     expect(compare("10", ">", "9")).toBe(true);
     expect(compare("2026-09-28T09:00:00Z", ">", "2026-09-28T08:00:00Z")).toBe(true);
-    expect(compare("Shell St Neots", "contains", "shell")).toBe(true);
+    expect(compare("Shell Station Road", "contains", "shell")).toBe(true);
     expect(compare(undefined, ">", "1")).toBe(false);
   });
 });

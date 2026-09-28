@@ -1,5 +1,5 @@
 /* =============================================================================================
-   Relay admin UI. The site chrome mirrors themisto.app (via Tailwind's dashboard): its fonts,
+   Relay admin UI. The site chrome mirrors themisto.app: its fonts,
    light/dark colour tokens, drifting-glow backdrop, glass surfaces and floating nav. theme.js
    sets data-theme on <html>; the media query only covers the moment before it runs.
    ============================================================================================= */

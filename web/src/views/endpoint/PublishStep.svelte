@@ -168,7 +168,7 @@
           {#each draft.corsOrigins as o, i}
             <span class="chip">{o}<button class="x" type="button" aria-label="Remove {o}" onclick={() => draft.corsOrigins.splice(i, 1)}>×</button></span>
           {/each}
-          <input class="input sm" style="width: 240px" bind:value={origin} placeholder="https://tailwind.themisto.app" aria-label="Add an origin" onkeydown={(e) => e.key === "Enter" && (e.preventDefault(), addOrigin())} />
+          <input class="input sm" style="width: 240px" bind:value={origin} placeholder="https://app.example.com" aria-label="Add an origin" onkeydown={(e) => e.key === "Enter" && (e.preventDefault(), addOrigin())} />
           <button class="btn sm" type="button" onclick={addOrigin} disabled={!origin.trim()}>Add</button>
         </div>
         {#if originError}<span class="err">{originError}</span>{/if}
