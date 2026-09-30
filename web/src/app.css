@@ -169,6 +169,7 @@ h3 { font-size: .74rem; margin: 0; font-family: var(--font-mono); letter-spacing
 .form > .fld { grid-column: span 12; }
 .fld > label, .lbl { font-size: .74rem; font-weight: 600; color: var(--text-2); }
 .hint { font-size: .74rem; color: var(--muted); }
+.hint.warn-text { color: var(--warn); }
 .err { font-size: .78rem; color: var(--bad); }
 @media (min-width: 760px) { .form > .s6 { grid-column: span 6; } .form > .s4 { grid-column: span 4; } .form > .s8 { grid-column: span 8; } .form > .s3 { grid-column: span 3; } }
 .input { width: 100%; min-width: 0; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--field); outline: none; transition: border-color .15s, box-shadow .15s; }

@@ -1,4 +1,8 @@
 import type { AuthType, PullResult } from "../db/store.js";
+import { contentTypeFor } from "../engine/body.js";
+import { fillPlaceholders } from "../engine/placeholders.js";
+
+export { contentTypeFor };
 
 export interface RequestSpec {
   method: string;
@@ -13,10 +17,12 @@ export interface RequestSpec {
 
 const USER_AGENT = "Relay/0.1 (self-hosted API relay)";
 
-export function buildRequest(spec: RequestSpec): { url: string; init: RequestInit } {
-  const url = new URL(spec.url);
+/** `at` and `tz` fill in date placeholders like {today} (see engine/placeholders). */
+export function buildRequest(spec: RequestSpec, at = Date.now(), tz = process.env.TZ || "Europe/London"): { url: string; init: RequestInit } {
+  const fill = (s: string) => fillPlaceholders(s, at, tz);
+  const url = new URL(fill(spec.url));
   const headers = new Headers({ "user-agent": USER_AGENT, accept: "application/json" });
-  for (const h of spec.headers) if (h.key.trim()) headers.set(h.key.trim(), h.value);
+  for (const h of spec.headers) if (h.key.trim()) headers.set(h.key.trim(), fill(h.value));
   const secret = spec.authSecret ?? "";
   switch (spec.authType) {
     case "bearer":
@@ -34,8 +40,8 @@ export function buildRequest(spec: RequestSpec): { url: string; init: RequestIni
   }
   const init: RequestInit = { method: spec.method, headers, redirect: "follow" };
   if (spec.body && spec.method !== "GET" && spec.method !== "HEAD") {
-    init.body = spec.body;
-    if (!headers.has("content-type")) headers.set("content-type", "application/json");
+    init.body = fill(spec.body);
+    if (!headers.has("content-type")) headers.set("content-type", contentTypeFor(spec.body));
   }
   return { url: url.toString(), init };
 }
@@ -76,7 +82,7 @@ export async function fetchOnce(spec: RequestSpec, maxBytes: number, now = () =>
   let url: string;
   let init: RequestInit;
   try {
-    ({ url, init } = buildRequest(spec));
+    ({ url, init } = buildRequest(spec, at));
   } catch (e) {
     return { at, status: 0, ok: false, durationMs: 0, bytes: 0, error: `Bad request settings: ${(e as Error).message}` };
   }

@@ -3,6 +3,8 @@
   import { api, ApiError } from "../lib/api";
   import { go } from "../lib/router.svelte";
   import { meta, say, pending } from "../lib/state.svelte";
+  import { contentTypeFor } from "$engine/body";
+  import { fillPlaceholders, PLACEHOLDER_HELP } from "$engine/placeholders";
   import { SCHEDULES, ago, bytes, inFuture, pullsPerDay, scheduleLabel, time } from "../lib/format";
   import type { Endpoint, ShapeNode, Snapshot, Source } from "../lib/types";
   import Stepper from "../components/Stepper.svelte";
@@ -92,6 +94,29 @@
     if (!b || !perDay) return null;
     const days = form.keepDays ?? 365;
     return { pulls: perDay * days, bytes: b * perDay * days, forever: form.keepDays === null };
+  });
+
+  // ---- request preview ----
+  // Date placeholders are filled in on every pull; show what the next one sends.
+  const hasDates = (s: string | null | undefined) => !!s && /\{(now|today|tomorrow)[^}]*\}/.test(s);
+  const fill = (s: string) => fillPlaceholders(s, Date.now(), meta.tz || "Europe/London");
+  const urlPreview = $derived(hasDates(form.url) ? fill(form.url) : null);
+  const bodyNote = $derived.by((): { text: string; warn?: boolean } | null => {
+    const body = form.body?.trim();
+    if (!body) return null;
+    const own = form.headers.find((h) => h.key.trim().toLowerCase() === "content-type" && h.value.trim());
+    if (own) return { text: `Sent as ${own.value.trim()}, from your Content-Type header.` };
+    const type = contentTypeFor(body);
+    if (type === "application/json") {
+      try {
+        JSON.parse(fill(body));
+      } catch {
+        return { text: "This starts like JSON but isn't valid JSON. The API will probably reject it.", warn: true };
+      }
+      return { text: "Sent as JSON." };
+    }
+    if (type === "application/x-www-form-urlencoded") return { text: "Sent as form fields (application/x-www-form-urlencoded)." };
+    return { text: "Sent as plain text. Add a Content-Type header if the API wants something else." };
   });
 
   // ---- actions ----
@@ -289,11 +314,18 @@
           </select>
           <input class="input mono" id="src-url" type="url" required bind:value={form.url} placeholder="https://api.example.com/v1/prices?town=example" />
         </div>
+        {#if urlPreview}
+          <span class="hint">Next pull calls <code class="chipcode">{urlPreview}</code></span>
+        {:else}
+          <span class="hint">Dates the API wants can go in the URL, headers or body, and are filled in on every pull: {PLACEHOLDER_HELP}.</span>
+        {/if}
       </div>
       {#if form.method !== "GET"}
         <div class="fld">
-          <label for="src-body">Request body (JSON)</label>
-          <textarea class="input" id="src-body" value={form.body ?? ""} oninput={(e) => (form.body = e.currentTarget.value)}></textarea>
+          <label for="src-body">Request body</label>
+          <textarea class="input mono" id="src-body" value={form.body ?? ""} oninput={(e) => (form.body = e.currentTarget.value)} placeholder={'{"from": "{today}", "region": "H"}   or   a=1&b=two'}></textarea>
+          <span class="hint">JSON, form fields or plain text; the Content-Type is set to match unless you add your own header.</span>
+          {#if bodyNote}<span class="hint" class:warn-text={bodyNote.warn}>{bodyNote.text}</span>{/if}
         </div>
       {/if}
       <div class="fld s4">

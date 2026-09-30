@@ -3,7 +3,7 @@
 Pull APIs on a schedule, pick and transform the data you need, and serve it back out as your own
 clean API. Self-hosted in Docker. [Try the click-through demo](https://themisto.app/relay/about.html#try-me).
 
-1. **Source**: a URL, method, auth and schedule. Relay calls it and keeps every response.
+1. **Source**: a URL, method, body, auth and schedule. Relay calls it and keeps every response.
 2. **Response**: the shape of what came back, worked out automatically.
 3. **Pick**: tick the fields you want.
 4. **Transform**: maths (× ÷ round…), list summaries (lowest, average, "the name of the cheapest"…),
@@ -67,7 +67,16 @@ Set these in `.env` (or your stack's environment). Only the first two are requir
    the stack's environment.
 3. Deploy, then check `http://<host>:8081/healthz`. `builtAt` shows when the image was built, so you
    can tell a fresh redeploy from a stale image.
-4. To update, use **Pull and redeploy** with **Re-pull image and redeploy** ticked.
+4. To update, build the new image on the Docker host, then use **Update the stack** (or **Pull and
+   redeploy**) with **Re-pull image** unticked:
+
+   ```sh
+   docker build -t relay:latest https://github.com/themistoapp/relay.git#main
+   ```
+
+   Relay's image is built from source, not published anywhere, so ticking **Re-pull image** makes
+   Portainer look for `relay:latest` on Docker Hub and the deploy fails with a bare
+   "Request failed with status code 500".
 
 Data lives in the `relay-data` volume (`/data/relay.db` plus `/data/backups`).
 
@@ -79,6 +88,28 @@ Relay on NPM's network (see the commented `networks` block in the compose file),
 `relay:8081`, and remove the 8081 port mapping.
 
 If the hostname goes through Cloudflare, set `CLIENT_IP_HEADER=cf-connecting-ip`.
+
+## Dates in requests
+
+Some APIs want a date in the request, e.g. National Grid's carbon forecast from the start of
+today. Put a placeholder in the source's URL, header values or body and Relay fills it in on
+every pull:
+
+| Placeholder | Becomes |
+| --- | --- |
+| `{now}` | the time of the pull, e.g. `2026-10-01T09:30:00Z` |
+| `{today}` | midnight at the start of today in `TZ`, e.g. `2026-09-30T23:00:00Z` |
+| `{tomorrow}` | midnight at the start of tomorrow |
+
+Add an offset (`{now-1h}`, `{now+30m}`, `{today-7d}`) or a format after a colon: `:date`
+(`2026-10-01`, in `TZ`), `:unix` (seconds) or `:ms`. So
+`https://api.carbonintensity.org.uk/intensity/{today}/fw48h` is always today and tomorrow. The
+source editor shows what the next pull will call.
+
+## Request bodies
+
+POST, PUT and PATCH sources can send a body: JSON, form fields (`a=1&b=two`) or plain text. The
+Content-Type is set to match unless you add your own `Content-Type` header.
 
 ## Calling an endpoint
 
