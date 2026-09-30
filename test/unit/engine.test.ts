@@ -163,6 +163,27 @@ const DEF: EndpointDefinition = {
   ],
 };
 
+describe("ops on a picked object", () => {
+  const env = { tz: "Europe/London", now: 0 };
+  const run = (id: string, v: unknown, args: Record<string, number | string> = {}) => OPS[id].fn!(v, { ...Object.fromEntries(OPS[id].args.map((a) => [a.name, a.default])), ...args }, env);
+  const day = { "2026-09-30": 2141, "2026-10-01": 2203, "2026-10-02": 1980 };
+
+  it("treats it as the list of its values, whatever its keys", () => {
+    expect(run("first", day)).toBe(2141);
+    expect(run("nth", day, { n: 2 })).toBe(2203);
+    expect(run("last", day)).toBe(1980);
+    expect(run("sum", day)).toBe(6324);
+    expect(run("count", day)).toBe(3);
+    expect(run("join", day, { sep: "/" })).toBe("2141/2203/1980");
+  });
+
+  it("keeps the keys through steps that trim, filter or sort", () => {
+    expect(run("take", day, { n: 2 })).toEqual({ "2026-09-30": 2141, "2026-10-01": 2203 });
+    expect(run("filter", day, { cmp: ">", value: "2000" })).toEqual({ "2026-09-30": 2141, "2026-10-01": 2203 });
+    expect(Object.keys(run("sort", day, { dir: "desc" }) as object)).toEqual(["2026-10-01", "2026-09-30", "2026-10-02"]);
+  });
+});
+
 describe("render", () => {
   it("renders single values, picks, history, objects and sorted/limited lists", () => {
     const { output, errors } = renderOutput(DEF, ctx());
@@ -182,6 +203,29 @@ describe("render", () => {
         { name: "SHELL", e10: 1.449, miles: 8.8, b7: 1.499 },
       ],
       all_names: ["TESCO", "SHELL", "BP"],
+    });
+  });
+
+  it("serves a picked object as it is, and maps over its values keeping the keys", () => {
+    const snap: Snapshot = { t: 1, key: "solar", body: { result: { watt_hours_day: { "2026-09-30": 2141, "2026-10-01": 2203 } } } };
+    const def: EndpointDefinition = {
+      fields: [
+        { id: "wh", name: "wh", sourceId: 1, path: "$.result.watt_hours_day", mode: "value", ops: [] },
+        { id: "kwh", name: "kwh", sourceId: 1, path: "$.result.watt_hours_day", mode: "value", ops: [{ op: "divide", args: { n: 1000 } }] },
+        { id: "today", name: "today", sourceId: 1, path: "$.result.watt_hours_day", mode: "value", ops: [{ op: "first" }] },
+      ],
+      output: [
+        { id: "o1", t: "field", key: "wh", fieldId: "wh" },
+        { id: "o2", t: "field", key: "kwh", fieldId: "kwh" },
+        { id: "o3", t: "field", key: "today", fieldId: "today" },
+      ],
+    };
+    const { output, errors } = renderOutput(def, { latest: new Map([[1, snap]]), now: 2, tz: "Europe/London" });
+    expect(errors).toEqual([]);
+    expect(output).toEqual({
+      wh: { "2026-09-30": 2141, "2026-10-01": 2203 },
+      kwh: { "2026-09-30": 2.141, "2026-10-01": 2.203 },
+      today: 2141,
     });
   });
 

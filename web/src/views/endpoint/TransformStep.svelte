@@ -2,7 +2,7 @@
   import { rowBase, relativeToRow } from "$engine/paths";
   import { removeFields, uniqueName, walk } from "../../lib/definition";
   import { uid } from "../../lib/format";
-  import { leafPaths } from "../../lib/shape";
+  import { isGroupPath, leafPaths } from "../../lib/shape";
   import type { Endpoint, Preview, ShapeNode, Source } from "../../lib/types";
   import FieldCard from "./FieldCard.svelte";
 
@@ -59,6 +59,7 @@
           preview={preview?.fields[field.id]}
           sourceName={sourceName(field.sourceId)}
           rowPaths={rowPathsFor(field.sourceId, field.path)}
+          group={isGroupPath(shapes[field.sourceId], field.path)}
           onRename={(a, b) => rename(a, b, field.id)}
           onDuplicate={() => duplicate(i)}
           onDelete={() => removeFields(draft.definition, new Set([field.id]))}

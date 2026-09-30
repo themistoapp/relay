@@ -67,8 +67,23 @@ function needNumber(x: unknown, op: string): number {
   throw new OpError(`"${op}" needs a number, got ${JSON.stringify(x)}`);
 }
 
+export const isPlainObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** A list step's input as a list. A picked object counts as the list of its values, so steps like
+ *  "Sum" or "First" work on e.g. `{ "2026-10-01": 2203, "2026-10-02": 2141 }` whatever its keys. */
+function items(v: unknown): unknown[] | null {
+  return Array.isArray(v) ? v : isPlainObject(v) ? Object.values(v) : null;
+}
+
+/** Runs a step that drops, trims or reorders items, keeping an object's keys with their values. */
+function keepKeys(v: unknown, fn: <T>(list: T[], value: (x: T) => unknown) => T[]): unknown {
+  if (Array.isArray(v)) return fn(v, (x) => x);
+  if (isPlainObject(v)) return Object.fromEntries(fn(Object.entries(v), ([, x]) => x));
+  return v;
+}
+
 function numbers(v: unknown): number[] {
-  const arr = Array.isArray(v) ? v : [v];
+  const arr = items(v) ?? [v];
   return arr.filter((x) => x !== null && x !== undefined).map((x) => needNumber(x, "this step"));
 }
 
@@ -213,34 +228,35 @@ const ops: OpMeta[] = [
   { id: "max", label: "Highest", group: "List", kind: "list", help: "The highest number in the list.", args: [], describe: () => "highest", fn: (v) => { const n = numbers(v); if (!n.length) throw new OpError("The list is empty"); return Math.max(...n); } },
   { id: "avg", label: "Average", group: "List", kind: "list", help: "The mean of the numbers in the list.", args: [], describe: () => "average", fn: (v) => { const n = numbers(v); if (!n.length) throw new OpError("The list is empty"); return n.reduce((s, x) => s + x, 0) / n.length; } },
   { id: "sum", label: "Sum", group: "List", kind: "list", help: "Add up the list.", args: [], describe: () => "sum", fn: (v) => numbers(v).reduce((s, x) => s + x, 0) },
-  { id: "count", label: "Count", group: "List", kind: "list", help: "How many items are in the list.", args: [], describe: () => "count", fn: (v) => (Array.isArray(v) ? v.length : v === null || v === undefined ? 0 : 1) },
-  { id: "first", label: "First", group: "List", kind: "list", help: "The first item.", args: [], describe: () => "first", fn: (v) => (Array.isArray(v) ? (v[0] ?? null) : v) },
-  { id: "last", label: "Last", group: "List", kind: "list", help: "The last item.", args: [], describe: () => "last", fn: (v) => (Array.isArray(v) ? (v[v.length - 1] ?? null) : v) },
-  { id: "nth", label: "Item number", group: "List", kind: "list", help: "One item by position (1 is the first).", args: [{ name: "n", label: "Position", type: "number", default: 1 }], describe: (a) => `item ${a.n}`, fn: (v, a) => (Array.isArray(v) ? (v[Math.trunc(num(a, "n")) - 1] ?? null) : v) },
-  { id: "take", label: "First N", group: "List", kind: "list", help: "Keep only the first N items.", args: [{ name: "n", label: "How many", type: "number", default: 3 }], describe: (a) => `first ${a.n}`, fn: (v, a) => (Array.isArray(v) ? v.slice(0, Math.max(0, Math.trunc(num(a, "n")))) : v) },
+  { id: "count", label: "Count", group: "List", kind: "list", help: "How many items are in the list.", args: [], describe: () => "count", fn: (v) => items(v)?.length ?? (v === null || v === undefined ? 0 : 1) },
+  { id: "first", label: "First", group: "List", kind: "list", help: "The first item.", args: [], describe: () => "first", fn: (v) => { const l = items(v); return l ? (l[0] ?? null) : v; } },
+  { id: "last", label: "Last", group: "List", kind: "list", help: "The last item.", args: [], describe: () => "last", fn: (v) => { const l = items(v); return l ? (l[l.length - 1] ?? null) : v; } },
+  { id: "nth", label: "Item number", group: "List", kind: "list", help: "One item by position (1 is the first).", args: [{ name: "n", label: "Position", type: "number", default: 1 }], describe: (a) => `item ${a.n}`, fn: (v, a) => { const l = items(v); return l ? (l[Math.trunc(num(a, "n")) - 1] ?? null) : v; } },
+  { id: "take", label: "First N", group: "List", kind: "list", help: "Keep only the first N items.", args: [{ name: "n", label: "How many", type: "number", default: 3 }], describe: (a) => `first ${a.n}`, fn: (v, a) => keepKeys(v, (l) => l.slice(0, Math.max(0, Math.trunc(num(a, "n"))))) },
   {
     id: "sort", label: "Sort", group: "List", kind: "list", help: "Sort the list.",
     args: [{ name: "dir", label: "Order", type: "select", default: "asc", options: [{ value: "asc", label: "low → high" }, { value: "desc", label: "high → low" }] }],
     describe: (a) => (a.dir === "desc" ? "sort high → low" : "sort low → high"),
     fn: (v, a) => {
-      if (!Array.isArray(v)) return v;
       const d = a.dir === "desc" ? -1 : 1;
-      return [...v].sort((x, y) => {
-        const p = comparable(x), q = comparable(y);
-        if (p === undefined) return 1;
-        if (q === undefined) return -1;
-        return (p < q ? -1 : p > q ? 1 : 0) * d;
-      });
+      return keepKeys(v, (l, value) =>
+        [...l].sort((x, y) => {
+          const p = comparable(value(x)), q = comparable(value(y));
+          if (p === undefined) return 1;
+          if (q === undefined) return -1;
+          return (p < q ? -1 : p > q ? 1 : 0) * d;
+        }),
+      );
     },
   },
   {
     id: "filter", label: "Filter", group: "List", kind: "list", help: "Keep items that match.",
     args: [{ name: "cmp", label: "Keep if", type: "select", default: ">", options: CMPS }, { name: "value", label: "Value", type: "text", default: "0" }],
     describe: (a) => `keep if ${CMPS.find((c) => c.value === a.cmp)?.label ?? a.cmp} ${a.value}`,
-    fn: (v, a) => (Array.isArray(v) ? v.filter((x) => compare(x, a.cmp as Cmp, str(a, "value"))) : v),
+    fn: (v, a) => keepKeys(v, (l, value) => l.filter((x) => compare(value(x), a.cmp as Cmp, str(a, "value")))),
   },
-  { id: "unique", label: "Unique", group: "List", kind: "list", help: "Remove duplicates.", args: [], describe: () => "unique", fn: (v) => (Array.isArray(v) ? [...new Map(v.map((x) => [JSON.stringify(x), x])).values()] : v) },
-  { id: "join", label: "Join", group: "List", kind: "list", help: "Join the list into one piece of text.", args: [{ name: "sep", label: "Separator", type: "text", default: ", " }], describe: (a) => `join with "${a.sep}"`, fn: (v, a) => (Array.isArray(v) ? v.map((x) => (x === null || x === undefined ? "" : String(x))).join(str(a, "sep")) : v) },
+  { id: "unique", label: "Unique", group: "List", kind: "list", help: "Remove duplicates.", args: [], describe: () => "unique", fn: (v) => { const l = items(v); return l ? [...new Map(l.map((x) => [JSON.stringify(x), x])).values()] : v; } },
+  { id: "join", label: "Join", group: "List", kind: "list", help: "Join the list into one piece of text.", args: [{ name: "sep", label: "Separator", type: "text", default: ", " }], describe: (a) => `join with "${a.sep}"`, fn: (v, a) => { const l = items(v); return l ? l.map((x) => (x === null || x === undefined ? "" : String(x))).join(str(a, "sep")) : v; } },
   {
     id: "pick_by", label: "Pick by another field", group: "List", kind: "pick",
     help: "Take the item where a neighbouring field is highest or lowest, e.g. the name of the cheapest station, or the most recent reading.",
@@ -330,8 +346,10 @@ export function describeStep(step: OpStep): string {
   return meta ? meta.describe(argsWithDefaults(step)) : `unknown step "${step.op}"`;
 }
 
-/** Applies a map op to a value, or to every value inside nested lists. Null passes through. */
+/** Applies a map op to a value, or to every value inside nested lists and objects (keeping their
+ *  keys). Null passes through. */
 export function mapDeep(v: unknown, f: (x: unknown) => unknown): unknown {
   if (Array.isArray(v)) return v.map((x) => mapDeep(x, f));
+  if (isPlainObject(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, mapDeep(x, f)]));
   return f(v);
 }

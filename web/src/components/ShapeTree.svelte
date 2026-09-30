@@ -29,12 +29,20 @@
 {#snippet node(sh: ShapeNode, key: string | null, path: string, depth: number)}
   {#if sh.type === "object" || sh.type === "array"}
     {#if key !== null}
-      <button type="button" class="trow branch" style:padding-left="{8 + depth * 18}px" onclick={() => toggle(path)} aria-expanded={!collapsed.has(path)}>
-        <span class="chev">{collapsed.has(path) ? "▸" : "▾"}</span>
-        <span class="key">{key}</span>
-        <span class="type {sh.type}">{sh.type === "array" ? `list · ${sh.count} item${sh.count === 1 ? "" : "s"}` : "object"}</span>
-        {#if sh.optional}<span class="opt">sometimes missing</span>{/if}
-      </button>
+      {@const used = usedBy ? usedBy(path) : []}
+      <!-- A whole object or list can be picked too: it's served as it is, whatever keys it holds. -->
+      <div class="trow" class:picked={used.length > 0} style:padding-left="{8 + depth * 18}px">
+        {#if onToggle}
+          <input type="checkbox" checked={used.length > 0} onchange={(e) => onToggle(path, e.currentTarget.checked)} aria-label="Pick all of {key}" />
+        {/if}
+        <button type="button" class="branch" onclick={() => toggle(path)} aria-expanded={!collapsed.has(path)}>
+          <span class="chev">{collapsed.has(path) ? "▸" : "▾"}</span>
+          <span class="key">{key}</span>
+          <span class="type {sh.type}">{sh.type === "array" ? `list · ${sh.count} item${sh.count === 1 ? "" : "s"}` : "object"}</span>
+          {#if sh.optional}<span class="opt">sometimes missing</span>{/if}
+        </button>
+        {#if used.length}<span class="usedby">→ {used.join(", ")}</span>{/if}
+      </div>
     {/if}
     {#if !collapsed.has(path)}
       {#if sh.type === "object"}
@@ -75,7 +83,7 @@
   .tree { padding: 8px; font-size: .84rem; min-width: max-content; }
   .trow { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; width: 100%; border: none; background: transparent; text-align: left; }
   .trow:hover { background: var(--accent-soft); }
-  .branch { cursor: pointer; }
+  .branch { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 0; border: none; background: transparent; text-align: left; flex: 1; color: inherit; font: inherit; }
   .pickable { cursor: pointer; }
   .picked { background: var(--accent-soft); }
   .key { font-family: var(--font-mono); font-size: .8rem; font-weight: 600; }

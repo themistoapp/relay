@@ -1,4 +1,4 @@
-import { childPath } from "$engine/paths";
+import { childPath, parsePath } from "$engine/paths";
 import type { ShapeNode } from "$engine/shape";
 
 /** Every leaf in a shape, with list items as `[*]`. */
@@ -26,4 +26,11 @@ export function rowLeafPaths(shape: ShapeNode | null | undefined, base: string):
     .map((l) => l.path)
     .filter((p) => p.startsWith(prefix) && p !== prefix)
     .map((p) => "$" + p.slice(prefix.length));
+}
+
+/** Whether a picked path is a whole object or list rather than a single value. */
+export function isGroupPath(shape: ShapeNode | null | undefined, path: string): boolean {
+  let n = shape ?? undefined;
+  for (const t of parsePath(path)) n = t.k === "key" ? n?.children?.[t.v] : n?.item;
+  return n?.type === "object" || n?.type === "array";
 }

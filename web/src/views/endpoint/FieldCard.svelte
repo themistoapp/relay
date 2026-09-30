@@ -9,6 +9,7 @@
     preview,
     sourceName,
     rowPaths,
+    group = false,
     onRename,
     onDuplicate,
     onDelete,
@@ -18,6 +19,8 @@
     sourceName: string;
     /** Neighbouring fields in the same list item, for "pick by". */
     rowPaths: string[];
+    /** A whole object or list was picked, not a single value. */
+    group?: boolean;
     onRename: (from: string, to: string) => void;
     onDuplicate: () => void;
     onDelete: () => void;
@@ -27,7 +30,10 @@
   let adding = $state("");
 
   const inList = $derived(isListPath(field.path));
-  const allowed = (m: OpMeta) => (field.mode === "row" ? m.kind === "map" || m.kind === "list" : m.kind !== "pick" || inList);
+  // History steps need one number, which a picked object or list isn't until a list step reduces it.
+  const allowed = (m: OpMeta) =>
+    (field.mode === "row" ? m.kind === "map" || m.kind === "list" : m.kind !== "pick" || inList) &&
+    !(group && m.kind === "history" && !field.ops.some((o) => OPS[o.op]?.kind === "list"));
   const groups = $derived(OP_GROUPS.map((g) => ({ g, ops: OP_LIST.filter((o) => o.group === g && allowed(o)) })).filter((x) => x.ops.length));
 
   function add() {
@@ -80,7 +86,7 @@
   </div>
 
   <div class="pipe">
-    <span class="chip src">{field.mode === "row" ? `each ${rowBase(field.path)?.replace(/^\$\.?/, "").replace("[*]", "")} → ${relativeToRow(field.path).replace(/^\$\.?/, "")}` : inList ? "the whole list" : "value"}</span>
+    <span class="chip src">{field.mode === "row" ? `each ${rowBase(field.path)?.replace(/^\$\.?/, "").replace("[*]", "")} → ${relativeToRow(field.path).replace(/^\$\.?/, "")}` : inList ? "the whole list" : group ? "all of it" : "value"}</span>
     {#each field.ops as step, i}
       <span class="to">→</span>
       <span class="chip" class:hist={OPS[step.op]?.kind === "history"} class:editing={editing === i}>
