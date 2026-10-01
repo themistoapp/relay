@@ -99,6 +99,29 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX request_log_endpoint ON request_log(endpoint_id, id);
   `,
+  `
+  -- Saved histories: which entries of a source's response to keep as one row per time. Their points
+  -- outlive the pulls they came from, so a source can keep a week of pulls and a year of history.
+  CREATE TABLE histories (
+    id INTEGER PRIMARY KEY,
+    source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    definition TEXT NOT NULL,
+    keep_days INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX histories_source ON histories(source_id);
+
+  -- One row per history per time. data is JSON: { "<value id>": number | null }.
+  CREATE TABLE history_points (
+    history_id INTEGER NOT NULL REFERENCES histories(id) ON DELETE CASCADE,
+    t INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (history_id, t)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 export type DB = DatabaseSync;

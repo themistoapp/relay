@@ -8,6 +8,7 @@
   import type { ShapeNode, Snapshot, Source } from "../lib/types";
   import Chart from "../components/Chart.svelte";
   import JsonView from "../components/JsonView.svelte";
+  import SavedHistories from "./history/SavedHistories.svelte";
 
   let { source }: { source: Source } = $props();
 
@@ -120,10 +121,12 @@
   ];
 </script>
 
+<SavedHistories {source} />
+
 <section class="card glass">
   <div class="panel-head">
     <div>
-      <h2>History</h2>
+      <h2>Pulls</h2>
       <p class="sub">Every pull is kept for {source.keepDays ? `${source.keepDays} day${source.keepDays === 1 ? "" : "s"}` : "ever"}. Browse the responses, see what changed, and track any field over time.</p>
     </div>
     <div class="chips">
@@ -161,7 +164,7 @@
       <div style="padding: 12px">
         {#if seriesNote}<p class="muted small">{seriesNote}</p>{:else}<Chart {points} errors={errorTimes} />{/if}
       </div>
-      <p class="hint" style="padding: 0 16px 12px">Pick a field inside a list by editing its number, e.g. <span class="mono">stations[2].price</span>. Red dashed lines are failed pulls.</p>
+      <p class="hint" style="padding: 0 16px 12px">One value per pull. For a list with one entry per time (like half-hour slots), use <b>Keep a history</b> above instead. Red dashed lines are failed pulls.</p>
     </div>
 
     <div class="split">

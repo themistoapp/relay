@@ -3,7 +3,8 @@ import { statSync } from "node:fs";
 import { tx, type DB } from "./db.js";
 import { Secrets, newApiKey, sha256 } from "../crypto/secrets.js";
 import { resolve } from "../engine/paths.js";
-import type { EndpointDefinition, HistorySource, Snapshot } from "../engine/render.js";
+import type { EndpointDefinition, HistorySource, OutNode, Snapshot } from "../engine/render.js";
+import { extract, mergeValues, type HistoryDef, type Point } from "../engine/histories.js";
 
 export type AuthType = "none" | "bearer" | "header" | "basic" | "query";
 
@@ -101,7 +102,41 @@ export interface ApiKey {
   revokedAt: number | null;
 }
 
+export interface History {
+  id: number;
+  sourceId: number;
+  name: string;
+  definition: HistoryDef;
+  /** How long to keep points for; null keeps them for good. */
+  keepDays: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type HistoryInput = Omit<History, "id" | "createdAt" | "updatedAt">;
+
+export interface HistoryStats {
+  points: number;
+  oldest: number | null;
+  newest: number | null;
+}
+
 type Row = Record<string, any>;
+
+const toHistory = (r: Row): History => ({
+  id: r.id,
+  sourceId: r.source_id,
+  name: r.name,
+  definition: JSON.parse(r.definition),
+  keepDays: r.keep_days,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+/** Every saved-history node in an endpoint's output, however deeply nested. */
+export function historyNodes(nodes: OutNode[]): Extract<OutNode, { t: "history" }>[] {
+  return nodes.flatMap((n) => (n.t === "history" ? [n] : n.t === "list" || n.t === "object" ? historyNodes(n.children) : []));
+}
 
 const toSource = (r: Row): Source => ({
   id: r.id,
@@ -180,6 +215,7 @@ const BROWSABLE: Record<string, { columns: string[]; mask?: Record<string, (v: a
     columns: ["id", "slug", "name", "enabled", "access", "cors_origins", "rate_limit", "rate_window", "rate_by", "cache_ttl", "definition", "version", "updated_at"],
     mask: { definition: (v: string) => (v.length > 120 ? v.slice(0, 117) + "…" : v) },
   },
+  histories: { columns: ["id", "source_id", "name", "keep_days", "definition", "created_at", "updated_at"], mask: { definition: (v: string) => (v.length > 120 ? v.slice(0, 117) + "…" : v) } },
   api_keys: { columns: ["id", "endpoint_id", "label", "key_hash", "key_hint", "created_at", "last_used_at", "use_count", "revoked_at"], mask: { key_hash: () => "•••••••• (hash, hidden)" } },
   request_log: { columns: ["id", "endpoint_id", "slug", "caller", "ip", "status", "ms", "at"] },
 };
@@ -250,7 +286,7 @@ export class Store {
   endpointsUsingSource(id: number): { id: number; name: string; slug: string }[] {
     return this.listEndpoints()
       .filter((e) => e.definition.fields.some((f) => f.sourceId === id) || e.definition.output.some(function uses(n): boolean {
-        return (n.t === "list" && n.sourceId === id) || ((n.t === "list" || n.t === "object") && n.children.some(uses));
+        return ((n.t === "list" || n.t === "history") && n.sourceId === id) || ((n.t === "list" || n.t === "object") && n.children.some(uses));
       }))
       .map((e) => ({ id: e.id, name: e.name, slug: e.slug }));
   }
@@ -395,6 +431,104 @@ export class Store {
       out.push({ t: r.fetched_at, v: resolve(this.loadBody(r.body_id), path) ?? null });
     }
     return out;
+  }
+
+  // ---------------------------------------------------------------- saved histories
+
+  listHistories(sourceId?: number): (History & HistoryStats)[] {
+    const rows = (sourceId === undefined
+      ? this.db.prepare("SELECT * FROM histories ORDER BY name COLLATE NOCASE").all()
+      : this.db.prepare("SELECT * FROM histories WHERE source_id = ? ORDER BY name COLLATE NOCASE").all(sourceId)) as Row[];
+    return rows.map((r) => ({ ...toHistory(r), ...this.historyStats(r.id) }));
+  }
+
+  getHistory(id: number): History | undefined {
+    const r = this.db.prepare("SELECT * FROM histories WHERE id = ?").get(id) as Row | undefined;
+    return r ? toHistory(r) : undefined;
+  }
+
+  historyStats(id: number): HistoryStats {
+    const r = this.db.prepare("SELECT COUNT(*) AS n, MIN(t) AS oldest, MAX(t) AS newest FROM history_points WHERE history_id = ?").get(id) as Row;
+    return { points: r.n, oldest: r.oldest, newest: r.newest };
+  }
+
+  createHistory(h: HistoryInput, now = Date.now()): History {
+    const r = this.db
+      .prepare("INSERT INTO histories (source_id, name, definition, keep_days, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(h.sourceId, h.name, JSON.stringify(h.definition), h.keepDays, now, now);
+    return this.getHistory(Number(r.lastInsertRowid))!;
+  }
+
+  updateHistory(id: number, h: Omit<HistoryInput, "sourceId">, now = Date.now()): History | undefined {
+    const r = this.db.prepare("UPDATE histories SET name = ?, definition = ?, keep_days = ?, updated_at = ? WHERE id = ?").run(h.name, JSON.stringify(h.definition), h.keepDays, now, id);
+    return r.changes ? this.getHistory(id) : undefined;
+  }
+
+  deleteHistory(id: number): boolean {
+    return this.db.prepare("DELETE FROM histories WHERE id = ?").run(id).changes > 0;
+  }
+
+  /** Endpoints that serve this history. */
+  endpointsUsingHistory(id: number): { id: number; name: string; slug: string }[] {
+    return this.listEndpoints()
+      .filter((e) => historyNodes(e.definition.output).some((n) => n.historyId === id))
+      .map((e) => ({ id: e.id, name: e.name, slug: e.slug }));
+  }
+
+  /** Saves points, merging with what's there: a newer number replaces an older one, a newer empty doesn't. */
+  savePoints(historyId: number, points: Point[], now = Date.now()): number {
+    if (!points.length) return 0;
+    const get = this.db.prepare("SELECT data FROM history_points WHERE history_id = ? AND t = ?");
+    const put = this.db.prepare("INSERT INTO history_points (history_id, t, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (history_id, t) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at");
+    return tx(this.db, () => {
+      for (const p of points) {
+        const old = get.get(historyId, p.t) as Row | undefined;
+        put.run(historyId, p.t, JSON.stringify(old ? mergeValues(JSON.parse(old.data), p.values) : p.values), now);
+      }
+      return points.length;
+    });
+  }
+
+  /** Points with t in [from, to), oldest first. */
+  points(historyId: number, from: number, to: number): Point[] {
+    return (this.db.prepare("SELECT t, data FROM history_points WHERE history_id = ? AND t >= ? AND t < ? ORDER BY t").all(historyId, from, to) as Row[]).map((r) => ({ t: r.t, values: JSON.parse(r.data) }));
+  }
+
+  /** Reads a source's response into each of its histories. */
+  ingest(sourceId: number, body: unknown, tz: string, now = Date.now()): { historyId: number; saved: number; error?: string }[] {
+    return this.listHistories(sourceId).map((h) => {
+      const x = extract(body, h.definition, tz, now);
+      return { historyId: h.id, saved: this.savePoints(h.id, x.points, now), error: x.error };
+    });
+  }
+
+  /** Clears a history and fills it again from every pull still stored, oldest first. */
+  rebuildHistory(id: number, tz: string, now = Date.now()): { pulls: number; points: number } {
+    const h = this.getHistory(id);
+    if (!h) return { pulls: 0, points: 0 };
+    this.db.prepare("DELETE FROM history_points WHERE history_id = ?").run(id);
+    const rows = this.db.prepare("SELECT body_id FROM snapshots WHERE source_id = ? AND ok = 1 AND body_id IS NOT NULL ORDER BY fetched_at, id").all(h.sourceId) as Row[];
+    let pulls = 0;
+    let last: number | null = null;
+    for (const r of rows) {
+      // A run of identical responses gives identical points, so read each run once.
+      if (r.body_id === last) continue;
+      last = r.body_id;
+      pulls++;
+      this.savePoints(id, extract(this.loadBody(r.body_id), h.definition, tz, now).points, now);
+    }
+    this.pruneHistory(h, now);
+    return { pulls, points: this.historyStats(id).points };
+  }
+
+  private pruneHistory(h: History, now: number): number {
+    if (!h.keepDays) return 0;
+    return Number(this.db.prepare("DELETE FROM history_points WHERE history_id = ? AND t < ?").run(h.id, now - h.keepDays * 86_400_000).changes);
+  }
+
+  /** Applies every history's keep setting. Times in the future (forecasts) are never old. */
+  pruneHistories(now = Date.now()): number {
+    return this.listHistories().reduce((n, h) => n + this.pruneHistory(h, now), 0);
   }
 
   // ---------------------------------------------------------------- housekeeping
@@ -562,24 +696,33 @@ export class Store {
       exportedAt: new Date().toISOString(),
       note: "Tokens and API keys are not included. Re-enter tokens after importing.",
       sources: this.listSources().map(({ id, name, method, url, headers, body, authType, authName, schedule, keepDays, keepCount, timeoutMs, enabled }) => ({ id, name, method, url, headers, body, authType, authName, schedule, keepDays, keepCount, timeoutMs, enabled })),
+      histories: this.listHistories().map(({ id, sourceId, name, definition, keepDays }) => ({ id, sourceId, name, definition, keepDays })),
       endpoints: this.listEndpoints().map(({ slug, name, definition, enabled, access, corsOrigins, rateLimit, rateWindow, rateBy, cacheTtl }) => ({ slug, name, definition, enabled, access, corsOrigins, rateLimit, rateWindow, rateBy, cacheTtl })),
     };
   }
 
-  /** Adds everything in an export as new sources and endpoints. Endpoint slugs that are taken get a suffix. */
-  importConfig(cfg: { sources: (Omit<SourceInput, "authSecret"> & { id: number })[]; endpoints: EndpointInput[] }): { sources: number; endpoints: number } {
+  /** Adds everything in an export as new sources, histories and endpoints. Endpoint slugs that are taken get a suffix.
+   *  Histories come over empty: their points fill in again from the next pulls. */
+  importConfig(cfg: { sources: (Omit<SourceInput, "authSecret"> & { id: number })[]; histories?: (HistoryInput & { id: number })[]; endpoints: EndpointInput[] }): { sources: number; histories: number; endpoints: number } {
     return tx(this.db, () => {
       const idMap = new Map<number, number>();
       for (const s of cfg.sources) idMap.set(s.id, this.createSource({ ...s, authSecret: null }).id);
       const remap = (id: number) => idMap.get(id) ?? id;
+      const histMap = new Map<number, number>();
+      for (const h of cfg.histories ?? []) histMap.set(h.id, this.createHistory({ ...h, sourceId: remap(h.sourceId) }).id);
       const remapNodes = (nodes: EndpointDefinition["output"]): EndpointDefinition["output"] =>
-        nodes.map((n) => (n.t === "list" ? { ...n, sourceId: remap(n.sourceId), children: remapNodes(n.children) } : n.t === "object" ? { ...n, children: remapNodes(n.children) } : n));
+        nodes.map((n) =>
+          n.t === "list" ? { ...n, sourceId: remap(n.sourceId), children: remapNodes(n.children) }
+          : n.t === "object" ? { ...n, children: remapNodes(n.children) }
+          : n.t === "history" ? { ...n, sourceId: remap(n.sourceId), historyId: histMap.get(n.historyId) ?? n.historyId }
+          : n,
+        );
       for (const e of cfg.endpoints) {
         let slug = e.slug;
         for (let i = 2; this.slugTaken(slug); i++) slug = `${e.slug}-${i}`;
         this.createEndpoint({ ...e, slug, enabled: false, definition: { fields: e.definition.fields.map((f) => ({ ...f, sourceId: remap(f.sourceId) })), output: remapNodes(e.definition.output) } });
       }
-      return { sources: cfg.sources.length, endpoints: cfg.endpoints.length };
+      return { sources: cfg.sources.length, histories: cfg.histories?.length ?? 0, endpoints: cfg.endpoints.length };
     });
   }
 }

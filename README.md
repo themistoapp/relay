@@ -89,6 +89,28 @@ Relay on NPM's network (see the commented `networks` block in the compose file),
 
 If the hostname goes through Cloudflare, set `CLIENT_IP_HEADER=cf-connecting-ip`.
 
+## Keeping a history
+
+Many APIs only show recent data: the next 48 hours of grid carbon, or today's energy prices. To keep
+it, open a source's **History** tab and press **Keep a history**. Four steps, each shown on the latest
+pull:
+
+1. **Where**: pick the list with one entry per time. Relay finds the lists for you, including
+   objects whose names are times, like `{"2026-10-01 14:00:00": 812, …}`.
+2. **When**: pick the field that holds each entry's time. Relay shows how it reads the first few.
+   Text with no time zone is read as `TZ` time.
+3. **Numbers**: tick the numbers to keep, name them, and optionally use another field when one is
+   empty (e.g. the forecast while the actual isn't in yet) or run maths steps on them.
+4. **Save**: choose how long to keep each time. Saving also reads back through the pulls already
+   stored.
+
+After that, every pull adds its times. A time that's already saved gets the newer numbers, but an
+empty number never replaces a saved one. Points are kept separately from pulls, so a source can keep
+a week of pulls and a year of history.
+
+To serve a history, drag it into an endpoint's **Shape** step and choose the range (today, the last
+7 days, …), whether to group it per hour or per day, and how times are written.
+
 ## Dates in requests
 
 Some APIs want a date in the request, e.g. National Grid's carbon forecast from the start of

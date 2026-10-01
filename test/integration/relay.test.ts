@@ -299,7 +299,7 @@ describe("the whole flow", () => {
 
   it("browses tables with secrets masked", async () => {
     const tables = await admin("GET", "/tables");
-    expect(tables.body.map((t: any) => t.name)).toEqual(["sources", "snapshots", "bodies", "endpoints", "api_keys", "request_log"]);
+    expect(tables.body.map((t: any) => t.name)).toEqual(["sources", "snapshots", "bodies", "endpoints", "histories", "api_keys", "request_log"]);
     const sources = await admin("GET", "/tables/sources");
     const col = sources.body.columns.indexOf("auth_secret");
     expect(sources.body.rows[0][col]).toMatch(/hidden/);
@@ -314,7 +314,7 @@ describe("the whole flow", () => {
     const cfg = exp.body;
     expect(JSON.stringify(cfg)).not.toContain("upstream-token");
     const imp = await admin("POST", "/config/import", cfg);
-    expect(imp.body).toEqual({ sources: 1, endpoints: 1 });
+    expect(imp.body).toEqual({ sources: 1, histories: 0, endpoints: 1 });
     const eps = (await admin("GET", "/endpoints")).body;
     expect(eps.map((e: any) => e.slug).sort()).toEqual(["fuel-prices", "fuel-prices-2"]);
     const copy = eps.find((e: any) => e.slug === "fuel-prices-2");

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parsePath } from "../engine/paths.js";
 import { OPS, CMPS } from "../engine/ops.js";
 import type { OutNode } from "../engine/render.js";
+import { COMBINES, GROUPS, RANGES, TIME_FORMATS } from "../engine/histories.js";
 
 const path = z.string().max(500).refine((p) => {
   try {
@@ -26,6 +27,8 @@ const field = z.object({
   ops: z.array(opStep).max(50),
 });
 
+const oneOf = (list: readonly { value: string }[]) => z.enum(list.map((x) => x.value) as [string, ...string[]]);
+
 const key = z.string().min(1, "Every output key needs a name").max(100);
 const cmp = z.enum(CMPS.map((c) => c.value) as [string, ...string[]]);
 
@@ -45,12 +48,50 @@ const outNode: z.ZodType<OutNode> = z.lazy(() =>
       limit: z.number().int().min(0).max(100000).optional(),
       filter: z.object({ key: z.string(), cmp, value: z.string().max(500) }).nullable().optional(),
     }),
+    z.object({
+      id: z.string(),
+      t: z.literal("history"),
+      key,
+      sourceId: z.number().int(),
+      historyId: z.number().int(),
+      range: oneOf(RANGES),
+      group: oneOf(GROUPS),
+      combine: oneOf(COMBINES),
+      timeFormat: oneOf(TIME_FORMATS),
+      values: z.array(z.string().max(64)).max(50).optional(),
+    }),
   ]),
 ) as z.ZodType<OutNode>;
 
 export const definitionSchema = z.object({
   fields: z.array(field).max(500),
   output: z.array(outNode).max(500),
+});
+
+const mapOpStep = opStep.refine((s) => OPS[s.op]?.kind === "map", "Only steps that change one value at a time can be used here");
+
+export const historyDefSchema = z.object({
+  rows: path,
+  rowsKind: z.enum(["list", "names"]),
+  time: path.nullable(),
+  values: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        name: z.string().trim().min(1, "Every number needs a name").max(100),
+        path,
+        fallback: path.nullable().optional(),
+        ops: z.array(mapOpStep).max(20),
+      }),
+    )
+    .min(1, "Tick at least one number to keep")
+    .max(50),
+}).refine((d) => d.time !== null || d.rowsKind === "names", { message: "Choose which field says when", path: ["time"] });
+
+export const historySchema = z.object({
+  name: z.string().trim().min(1, "Give the history a name").max(100),
+  definition: historyDefSchema,
+  keepDays: z.number().int().min(1).max(36500).nullable(),
 });
 
 export const slugSchema = z

@@ -3,6 +3,7 @@
 
 import { resolve, rowBase, relativeToRow } from "./paths.js";
 import { OPS, OpError, argsWithDefaults, comparable, compare, durationMs, mapDeep, type Cmp, type OpStep } from "./ops.js";
+import { rangeWindow, seriesRows, type CombineId, type GroupId, type HistoryDef, type Point, type RangeId, type TimeFormatId } from "./histories.js";
 
 export interface FieldDef {
   id: string;
@@ -31,6 +32,20 @@ export type OutNode =
       dir?: "asc" | "desc";
       limit?: number;
       filter?: { key: string; cmp: Cmp; value: string } | null;
+    }
+  | {
+      id: string;
+      t: "history";
+      key: string;
+      /** The history's source, so the endpoint's cache moves on when it pulls. */
+      sourceId: number;
+      historyId: number;
+      range: RangeId;
+      group: GroupId;
+      combine: CombineId;
+      timeFormat: TimeFormatId;
+      /** Ids of the history's values to include; missing or empty means all of them. */
+      values?: string[];
     };
 
 export interface EndpointDefinition {
@@ -53,9 +68,16 @@ export interface HistorySource {
   back(sourceId: number, n: number, at: number): Snapshot | undefined;
 }
 
+/** Saved histories and their points. */
+export interface SavedHistories {
+  get(id: number): { name: string; definition: HistoryDef } | undefined;
+  points(id: number, from: number, to: number): Point[];
+}
+
 export interface RenderContext {
   latest: Map<number, Snapshot>;
   history?: HistorySource;
+  histories?: SavedHistories;
   now: number;
   tz: string;
   memo?: Map<string, unknown>;
@@ -215,6 +237,7 @@ export function renderOutput(def: EndpointDefinition, ctx: RenderContext): { out
     for (const n of nodes) {
       if (n.t === "field") o[n.key] = normalise(fieldValue(n.fieldId, row));
       else if (n.t === "object") o[n.key] = renderNodes(n.children, row);
+      else if (n.t === "history") o[n.key] = renderHistory(n);
       else o[n.key] = renderList(n);
     }
     return o;
@@ -247,7 +270,24 @@ export function renderOutput(def: EndpointDefinition, ctx: RenderContext): { out
     return rows;
   }
 
+  function renderHistory(n: Extract<OutNode, { t: "history" }>): unknown[] {
+    const h = ctx.histories?.get(n.historyId);
+    if (!h) {
+      fail(undefined, n.id, `"${n.key}": that saved history was deleted`);
+      return [];
+    }
+    const wanted = n.values?.length ? h.definition.values.filter((v) => n.values!.includes(v.id)) : h.definition.values;
+    const [from, to] = rangeWindow(n.range, ctx.now, ctx.tz);
+    const points = ctx.histories!.points(n.historyId, from, to);
+    return seriesRows(points, { group: n.group, combine: n.combine, timeFormat: n.timeFormat, values: wanted.map((v) => [v.id, v.name]) }, ctx.tz).map((r) => normaliseRow(r));
+  }
+
   return { output: renderNodes(def.output), errors };
+}
+
+function normaliseRow(r: Record<string, unknown>): Record<string, unknown> {
+  for (const k of Object.keys(r)) r[k] = normalise(r[k]);
+  return r;
 }
 
 // Floating-point noise like 1.3990000000000002 is never what anyone wants to serve.

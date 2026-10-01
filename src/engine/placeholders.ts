@@ -36,7 +36,12 @@ function offsetAt(t: number, tz: string): number {
 
 /** The instant a date (YYYY-MM-DD) starts in a time zone. */
 export function midnightIn(date: string, tz: string): number {
-  const guess = Date.parse(`${date}T00:00:00Z`);
+  return wallClockIn(date, "00:00:00", tz);
+}
+
+/** The instant a clock in a time zone shows this date (YYYY-MM-DD) and time (HH:MM:SS, fractions allowed). */
+export function wallClockIn(date: string, time: string, tz: string): number {
+  const guess = Date.parse(`${date}T${time}Z`);
   // Check the offset again at the first answer, in case a clock change falls between the two.
   return guess - offsetAt(guess - offsetAt(guess, tz), tz);
 }

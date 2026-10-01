@@ -4,6 +4,11 @@ import type { EndpointDefinition, FieldDef, OutNode } from "$engine/render";
 import { uid } from "./format";
 
 export type ListNode = Extract<OutNode, { t: "list" }>;
+export type HistoryNode = Extract<OutNode, { t: "history" }>;
+type Container = Extract<OutNode, { children: OutNode[] }>;
+
+/** Groups and lists hold other nodes; fields and saved histories don't. */
+export const hasChildren = (n: OutNode): n is Container => n.t === "list" || n.t === "object";
 
 export function uniqueName(existing: string[], base: string): string {
   const clean = base.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "value";
@@ -23,7 +28,7 @@ export function listName(base: string): string {
 export function walk(nodes: OutNode[], fn: (n: OutNode, parent: OutNode[]) => void) {
   for (const n of nodes) {
     fn(n, nodes);
-    if (n.t !== "field") walk(n.children, fn);
+    if (hasChildren(n)) walk(n.children, fn);
   }
 }
 
@@ -31,7 +36,7 @@ export function findNode(nodes: OutNode[], id: string): { node: OutNode; parent:
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
     if (n.id === id) return { node: n, parent: nodes, index: i };
-    if (n.t !== "field") {
+    if (hasChildren(n)) {
       const f = findNode(n.children, id);
       if (f) return f;
     }
@@ -41,7 +46,7 @@ export function findNode(nodes: OutNode[], id: string): { node: OutNode; parent:
 
 export function contains(node: OutNode, id: string): boolean {
   if (node.id === id) return true;
-  return node.t !== "field" && node.children.some((c) => contains(c, id));
+  return hasChildren(node) && node.children.some((c) => contains(c, id));
 }
 
 /** Ticking a field in the Pick step: add it, and put it somewhere sensible in the output. */
@@ -71,7 +76,7 @@ export function removeFields(def: EndpointDefinition, ids: Set<string>) {
   const prune = (nodes: OutNode[]): OutNode[] =>
     nodes
       .filter((n) => !(n.t === "field" && ids.has(n.fieldId)))
-      .map((n) => (n.t === "field" ? n : { ...n, children: prune(n.children) }))
+      .map((n) => (hasChildren(n) ? { ...n, children: prune(n.children) } : n))
       .filter((n) => !(n.t === "list" && n.children.length === 0));
   def.output = prune(def.output);
 }

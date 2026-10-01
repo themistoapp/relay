@@ -14,6 +14,7 @@ import { sourceRoutes } from "./sources.js";
 import { endpointRoutes } from "./endpoints.js";
 import { historyRoutes } from "./history.js";
 import { dataRoutes } from "./data.js";
+import { historiesRoutes } from "./histories.js";
 
 export interface AdminDeps {
   env: Env;
@@ -99,6 +100,7 @@ export function buildAdminServer(deps: AdminDeps): FastifyInstance {
   app.register(historyRoutes(deps), { prefix: "/admin/api" });
   app.register(endpointRoutes(deps), { prefix: "/admin/api" });
   app.register(dataRoutes(deps), { prefix: "/admin/api" });
+  app.register(historiesRoutes(deps), { prefix: "/admin/api" });
 
   const webDir = deps.webDir ?? fileURLToPath(new URL("../web", import.meta.url));
   const hasWeb = existsSync(webDir + "/index.html");

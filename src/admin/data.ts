@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { AdminDeps } from "./server.js";
-import { endpointSchema, parse, sourceSchema } from "./schemas.js";
+import { endpointSchema, historySchema, parse, sourceSchema } from "./schemas.js";
 
 const importSchema = z.object({
   relay: z.literal(1),
   sources: z.array(sourceSchema.omit({ authSecret: true }).extend({ id: z.number().int() })),
+  histories: z.array(historySchema.extend({ id: z.number().int(), sourceId: z.number().int() })).optional(),
   endpoints: z.array(endpointSchema),
 });
 

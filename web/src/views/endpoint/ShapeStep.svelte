@@ -1,9 +1,13 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { rowBase } from "$engine/paths";
   import { CMPS } from "$engine/ops";
+  import { COMBINES, GROUPS, RANGES, TIME_FORMATS } from "$engine/histories";
   import type { OutNode } from "$engine/render";
-  import { contains, findNode, listName, uniqueName, type ListNode } from "../../lib/definition";
-  import { uid } from "../../lib/format";
+  import { contains, findNode, hasChildren, listName, uniqueName, type ListNode } from "../../lib/definition";
+  import { api } from "../../lib/api";
+  import { n as num, uid } from "../../lib/format";
+  import type { SavedHistory } from "../history/types";
   import type { Endpoint, Preview, Source } from "../../lib/types";
   import JsonView from "../../components/JsonView.svelte";
 
@@ -12,6 +16,12 @@
   const def = $derived(draft.definition);
   const fieldById = (id: string) => def.fields.find((f) => f.id === id);
   const sourceName = (id: number) => sources.find((s) => s.id === id)?.name ?? `#${id}`;
+
+  let histories = $state<SavedHistory[]>([]);
+  onMount(() => {
+    api.get<SavedHistory[]>("/histories").then((h) => (histories = h)).catch(() => {});
+  });
+  const historyById = (id: number) => histories.find((h) => h.id === id);
 
   const valueFields = $derived(def.fields.filter((f) => f.mode === "value"));
   const rowGroups = $derived.by(() => {
@@ -49,6 +59,14 @@
     target.push({ id: uid(), t: "field", key: uniqueName(keysIn(target), f.name), fieldId: f.id });
   }
 
+  /** A saved history goes in as one list of { time, …numbers }. It can't go inside a list, where it'd repeat for every item. */
+  function addHistory(id: number, container: OutNode[] | null) {
+    const h = historyById(id);
+    if (!h) return;
+    const target = container ?? draft.definition.output;
+    target.push({ id: uid(), t: "history", key: uniqueName(keysIn(target), h.name.toLowerCase()), sourceId: h.sourceId, historyId: h.id, range: "past_7d", group: "none", combine: "avg", timeFormat: "local" });
+  }
+
   function addGroup() {
     draft.definition.output.push({ id: uid(), t: "object", key: uniqueName(keysIn(def.output), "group"), children: [] });
   }
@@ -78,7 +96,7 @@
   // ---- drag and drop: fields from the palette, or existing nodes to a new container ----
   let over = $state<string | null>(null);
 
-  function dragStart(e: DragEvent, payload: { field?: string; node?: string }) {
+  function dragStart(e: DragEvent, payload: { field?: string; node?: string; history?: number }) {
     e.dataTransfer!.setData("application/x-relay", JSON.stringify(payload));
     e.dataTransfer!.effectAllowed = "copyMove";
     e.stopPropagation();
@@ -87,14 +105,14 @@
   function containerFor(id: string): OutNode[] | null {
     if (id === "root") return draft.definition.output;
     const f = findNode(draft.definition.output, id);
-    return f && f.node.t !== "field" ? f.node.children : null;
+    return f && hasChildren(f.node) ? f.node.children : null;
   }
 
   function drop(e: DragEvent, containerId: string) {
     e.preventDefault();
     e.stopPropagation();
     over = null;
-    let payload: { field?: string; node?: string };
+    let payload: { field?: string; node?: string; history?: number };
     try {
       payload = JSON.parse(e.dataTransfer!.getData("application/x-relay"));
     } catch {
@@ -102,7 +120,11 @@
     }
     const target = containerFor(containerId);
     if (!target) return;
+    const inList = containerId !== "root" && findNode(draft.definition.output, containerId)?.node.t === "list";
     if (payload.field) addFieldTo(payload.field, target);
+    else if (payload.history !== undefined) {
+      if (!inList) addHistory(payload.history, target);
+    }
     else if (payload.node) {
       const found = findNode(draft.definition.output, payload.node);
       if (!found || (containerId !== "root" && contains(found.node, containerId))) return;
@@ -124,9 +146,15 @@
   });
 
   const errorsFor = $derived(new Map((preview?.errors ?? []).map((e) => [e.fieldId, e.message])));
+  const historiesInUse = $derived.by(() => {
+    const s = new Set<number>();
+    const w = (ns: OutNode[]) => ns.forEach((n) => (n.t === "history" ? s.add(n.historyId) : hasChildren(n) ? w(n.children) : undefined));
+    w(def.output);
+    return s;
+  });
   const inUse = $derived.by(() => {
     const s = new Set<string>();
-    const w = (ns: OutNode[]) => ns.forEach((n) => (n.t === "field" ? s.add(n.fieldId) : w(n.children)));
+    const w = (ns: OutNode[]) => ns.forEach((n) => (n.t === "field" ? s.add(n.fieldId) : hasChildren(n) ? w(n.children) : undefined));
     w(def.output);
     return s;
   });
@@ -156,6 +184,55 @@
           <input bind:value={n.key} aria-label="Output key" />
           <span class="from" title={errorsFor.get(n.fieldId) ?? f?.path}>{f ? `← ${f.name}` : "missing field"}</span>
           {@render controls(n, i, list)}
+        </div>
+      {:else if n.t === "history"}
+        {@const h = historyById(n.historyId)}
+        <div class="group ishist" class:bad={errorsFor.has(n.id)} draggable="true" role="listitem" ondragstart={(e) => dragStart(e, { node: n.id })}>
+          <div class="onode head">
+            <span class="grip" aria-hidden="true">⋮⋮</span>
+            <input bind:value={n.key} aria-label="History key" />
+            <span class="type array">history</span>
+            {@render controls(n, i, list)}
+          </div>
+          <div class="opts">
+            {#if h}
+              <span>A list with one row per time from <b>{h.name}</b> ({sourceName(h.sourceId)}): <span class="mono">{"{"} time, {h.definition.values.filter((v) => !n.values?.length || n.values.includes(v.id)).map((v) => v.name).join(", ")} {"}"}</span></span>
+            {:else if histories.length}
+              <span class="bad-text">That saved history was deleted.</span>
+            {/if}
+          </div>
+          <div class="opts">
+            <span>Show
+              <select bind:value={n.range} aria-label="Time range">{#each RANGES as r}<option value={r.value}>{r.label.toLowerCase()}</option>{/each}</select>
+            </span>
+            <span>· rows:
+              <select bind:value={n.group} aria-label="Rows">{#each GROUPS as g}<option value={g.value}>{g.label.toLowerCase()}</option>{/each}</select>
+            </span>
+            {#if n.group !== "none"}
+              <span>· combining them by
+                <select bind:value={n.combine} aria-label="Combine">{#each COMBINES as c}<option value={c.value}>{c.label.toLowerCase()}</option>{/each}</select>
+              </span>
+            {/if}
+            <span>· times as
+              <select bind:value={n.timeFormat} aria-label="Time format">{#each TIME_FORMATS as f}<option value={f.value}>{f.label}</option>{/each}</select>
+            </span>
+          </div>
+          {#if h && h.definition.values.length > 1}
+            <div class="opts">
+              <span>Numbers:</span>
+              {#each h.definition.values as v}
+                <label class="check small">
+                  <input type="checkbox" checked={!n.values?.length || n.values.includes(v.id)} onchange={(e) => {
+                    const all = h.definition.values.map((x) => x.id);
+                    const cur = n.values?.length ? n.values : all;
+                    const next = e.currentTarget.checked ? [...cur, v.id] : cur.filter((x) => x !== v.id);
+                    n.values = next.length === all.length ? undefined : next.length ? next : cur;
+                  }} />
+                  {v.name}
+                </label>
+              {/each}
+            </div>
+          {/if}
         </div>
       {:else}
         <div class="group" class:islist={n.t === "list"} draggable="true" role="listitem" ondragstart={(e) => dragStart(e, { node: n.id })}>
@@ -230,7 +307,17 @@
         <h3>Per item of {listName(g.base)}</h3>
         {#each g.fields as f (f.id)}{@render paletteItem(f)}{/each}
       {/each}
-      {#if !def.fields.length}<a class="btn sm" href="#/endpoints/{draft.id}/pick">← Pick fields first</a>{/if}
+      {#if !def.fields.length && !histories.length}<a class="btn sm" href="#/endpoints/{draft.id}/pick">← Pick fields first</a>{/if}
+      <h3>Saved histories</h3>
+      {#each histories as h (h.id)}
+        <div class="pitem" class:unused={!historiesInUse.has(h.id)} draggable="true" role="listitem" ondragstart={(e) => dragStart(e, { history: h.id })}>
+          <span class="grip" aria-hidden="true">⋮⋮</span>
+          <span class="nm" title="{h.sourceName} · {num(h.points)} times saved">{h.name}</span>
+          <button class="add" type="button" aria-label="Add {h.name} to the output" onclick={() => addHistory(h.id, null)}>+</button>
+        </div>
+      {:else}
+        <span class="muted small">None yet. Set one up on a source's History step, with <b>Keep a history</b>.</span>
+      {/each}
     </div>
 
     <div class="box">
@@ -282,6 +369,9 @@
   @media (max-width: 560px) { .from { display: none; } .group > .drop { margin-left: 4px; } }
   .group { border-radius: 14px; border: 1px solid var(--line); padding: 6px; display: grid; gap: 6px; background: var(--field); }
   .group.islist { border-color: var(--line-strong); background: var(--accent-soft); }
+  .group.ishist { border-style: dashed; border-color: var(--line-strong); }
+  .group.ishist.bad { border-color: var(--bad); }
+  .bad-text { color: var(--bad); }
   .group > .drop { margin-left: 12px; border-left: 2px solid var(--line-strong); border-radius: 0 12px 12px 0; }
   .onode.head { background: transparent; border: none; }
   .opts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: .74rem; color: var(--text-2); padding: 0 6px; }

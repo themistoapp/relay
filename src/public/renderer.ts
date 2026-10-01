@@ -17,8 +17,8 @@ export function sourcesOf(def: EndpointDefinition): number[] {
   const ids = new Set(def.fields.map((f) => f.sourceId));
   const walk = (nodes: OutNode[]) => {
     for (const n of nodes) {
-      if (n.t === "list") ids.add(n.sourceId);
-      if (n.t !== "field") walk(n.children);
+      if (n.t === "list" || n.t === "history") ids.add(n.sourceId);
+      if (n.t === "list" || n.t === "object") walk(n.children);
     }
   };
   walk(def.output);
@@ -51,7 +51,11 @@ export class EndpointRenderer {
       fetchedAt = fetchedAt === null ? snap.t : Math.min(fetchedAt, snap.t);
       if (src && src.failStreak > 0) stale = true;
     }
-    return { ctx: { latest, history: this.store.history(), now, tz: this.tz, memo: new Map<string, unknown>() }, missing, fetchedAt, stale, key: keyParts.join(",") };
+    const histories = {
+      get: (id: number) => this.store.getHistory(id),
+      points: (id: number, from: number, to: number) => this.store.points(id, from, to),
+    };
+    return { ctx: { latest, history: this.store.history(), histories, now, tz: this.tz, memo: new Map<string, unknown>() }, missing, fetchedAt, stale, key: keyParts.join(",") };
   }
 
   /** Renders a saved endpoint, reusing the last result for up to its cache TTL while no new pull has landed. */

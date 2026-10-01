@@ -129,6 +129,16 @@ export class Scheduler {
     const res = await fetchWithRetry(spec, this.opts.maxResponseBytes, this.opts.retryDelays ?? [2000, 5000]);
     const { snapshot, failStreak, wasAlerted } = this.store.recordPull(id, res);
     if (res.ok) this.log.info({ sourceId: id, ms: res.durationMs, changed: snapshot.changed }, `pulled "${s.name}"`);
+    // An unchanged response would only save the same points again.
+    if (res.ok && snapshot.changed && snapshot.bodyId !== null) {
+      try {
+        for (const r of this.store.ingest(id, this.store.loadBody(snapshot.bodyId), this.opts.tz)) {
+          if (r.error) this.log.warn({ sourceId: id, historyId: r.historyId }, `history not saved: ${r.error}`);
+        }
+      } catch (e) {
+        this.log.error({ err: e, sourceId: id }, "saving histories failed");
+      }
+    }
     else this.log.warn({ sourceId: id, status: res.status, error: res.error, failStreak }, `pull failed for "${s.name}"`);
 
     if (this.opts.alertWebhookUrl) {
@@ -152,8 +162,10 @@ export class Scheduler {
   housekeeping() {
     let pruned = 0;
     for (const s of this.store.listSources()) pruned += this.store.prune(s.id);
+    const points = this.store.pruneHistories();
     this.store.trimRequestLog(this.opts.requestLogKeep);
     if (pruned) this.log.info({ pruned }, "pruned old pulls");
+    if (points) this.log.info({ points }, "pruned old history points");
   }
 
   /** Copies the database with VACUUM INTO (a consistent snapshot, safe while running). */
