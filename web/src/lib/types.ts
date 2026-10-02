@@ -76,3 +76,60 @@ export interface Preview {
   stale: boolean;
   missing: string[];
 }
+
+export type FeedSourceStatus = "ok" | "stale" | "error" | "pending" | "disabled";
+
+export interface FeedSource {
+  key: string;
+  name: string;
+  about: string;
+  url: string;
+  backfillUrl: string | null;
+  intervalMin: number;
+  timeoutMs: number;
+  authType: "none" | "bearer";
+  hasSecret: boolean;
+  enabled: boolean;
+  failStreak: number;
+  lastAttemptAt: number | null;
+  lastSuccessAt: number | null;
+  latestPublishTime: number | null;
+  lastError: string | null;
+  lastDurationMs: number | null;
+  lastRows: number | null;
+  status: FeedSourceStatus;
+  nextPollAt: number | null;
+  isDefault: boolean;
+  hasBackfill: boolean;
+}
+
+export interface FeedSettings {
+  enabled: boolean;
+  slug: string;
+  corsOrigins: string[];
+  maxAge: number;
+  staleWhileRevalidate: number;
+  rateLimitPerMin: number;
+  retainDays: number;
+  dfsHistoryDays: number;
+}
+
+export interface FeedState {
+  settings: FeedSettings;
+  sources: FeedSource[];
+  counts: { slots: number; fuelReadings: number; dfsEvents: number };
+  build: { builtAt: number | null; bytes: number; gzipBytes: number; brBytes: number; etag: string | null; error: string | null };
+}
+
+export interface FeedPollResult {
+  key: string;
+  ok: boolean;
+  at: number;
+  durationMs: number;
+  rows: number;
+  latestPublish: number | null;
+  error: string | null;
+  url: string | null;
+  backfill: boolean;
+  sample?: unknown[];
+}

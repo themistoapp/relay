@@ -111,6 +111,27 @@ a week of pulls and a year of history.
 To serve a history, drag it into an endpoint's **Shape** step and choose the range (today, the last
 7 days, …), whether to group it per hour or per day, and how times are written.
 
+## Watts Up feed
+
+A built-in feed that serves UK grid data for today and tomorrow, in half-hours, from one address:
+`/v1/watts-up` on the public port. Relay polls each upstream in the background (Elexon FUELINST,
+demand outturn, day-ahead demand and INDGEN; National Grid ESO carbon intensity and generation
+mix; NESO wholesale price and DFS events; Octopus Agile for region H; and home solar from a Home
+Assistant PV sensor), keeps the last good data from each, and rebuilds the response after every
+poll. A request only reads the database, so a slow or failing upstream never holds it up: that
+source shows `"status": "stale"` under `sources` and its last good values keep being served.
+
+Everything is seeded on first boot and can be changed under **Feeds** in the admin UI: each
+source's URL (with date placeholders), how often it's polled, its timeout and token; and the
+feed's address, CORS origins, cache headers, rate limit and how long rows are kept. **Test** calls
+a source with unsaved settings and shows what Relay read; **Reset to default** undoes edits. Home
+solar starts with the sensor URL and token of an existing Home Assistant source if there is one;
+otherwise it's paused until you add them.
+
+Responses are gzip or Brotli compressed with an `ETag` (so repeat requests can get a `304`), and
+`Cache-Control: public, max-age=30, stale-while-revalidate=300` by default. Each day lists every
+half-hour (46 or 50 on clock-change days) with `null` for anything not published yet.
+
 ## Dates in requests
 
 Some APIs want a date in the request, e.g. National Grid's carbon forecast from the start of

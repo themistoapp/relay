@@ -8,6 +8,7 @@ import { Scheduler } from "./puller/scheduler.js";
 import { EndpointRenderer } from "./public/renderer.js";
 import { buildAdminServer } from "./admin/server.js";
 import { buildPublicServer } from "./public/server.js";
+import { WattsUpFeed } from "./feeds/wattsup/feed.js";
 
 export interface RelayOptions {
   dbFile?: string;
@@ -15,6 +16,8 @@ export interface RelayOptions {
   retryDelays?: number[];
   jitterMs?: number;
   webDir?: string;
+  /** Spread of the feed's first polls; 0 in tests. */
+  feedStartSpreadMs?: number;
 }
 
 /** Everything wired together, not yet listening. Tests use this with an in-memory database. */
@@ -40,8 +43,9 @@ export function createRelay(env: Env, opts: RelayOptions = {}) {
     log,
   );
   const renderer = new EndpointRenderer(store, env.TZ);
-  const admin = buildAdminServer({ env, store, scheduler, renderer, secrets, logger: log.child({ server: "admin" }), webDir: opts.webDir });
-  const pub = buildPublicServer({ env, store, renderer, logger: log.child({ server: "public" }) });
+  const wattsUp = new WattsUpFeed(db, secrets, { maxResponseBytes: env.MAX_RESPONSE_MB * 1024 * 1024, startSpreadMs: opts.feedStartSpreadMs }, log.child({ feed: "watts-up" }));
+  const admin = buildAdminServer({ env, store, scheduler, renderer, secrets, wattsUp, logger: log.child({ server: "admin" }), webDir: opts.webDir });
+  const pub = buildPublicServer({ env, store, renderer, wattsUp, logger: log.child({ server: "public" }) });
 
   return {
     env,
@@ -50,10 +54,12 @@ export function createRelay(env: Env, opts: RelayOptions = {}) {
     store,
     scheduler,
     renderer,
+    wattsUp,
     admin,
     public: pub,
     async close() {
       scheduler.stop();
+      wattsUp.stop();
       await Promise.all([admin.close(), pub.close()]);
       db.close();
     },

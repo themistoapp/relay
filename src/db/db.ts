@@ -122,6 +122,105 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (history_id, t)
   ) WITHOUT ROWID;
   `,
+  `
+  -- Built-in feeds: upstreams Relay polls and combines with fixed rules, served as one endpoint.
+  -- Rows are seeded on boot from src/feeds/*/defaults.ts and then edited in the admin UI.
+  CREATE TABLE feed_sources (
+    feed TEXT NOT NULL,
+    key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    backfill_url TEXT,
+    interval_min INTEGER NOT NULL,
+    timeout_ms INTEGER NOT NULL DEFAULT 20000,
+    auth_type TEXT NOT NULL DEFAULT 'none',
+    auth_secret TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    fail_streak INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at INTEGER,
+    last_success_at INTEGER,
+    latest_publish_time INTEGER,
+    last_error TEXT,
+    last_duration_ms INTEGER,
+    last_rows INTEGER,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (feed, key)
+  ) WITHOUT ROWID;
+
+  CREATE TABLE feed_settings (
+    feed TEXT PRIMARY KEY,
+    settings TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  -- Snapshots that aren't time series (home solar, the current carbon mix), last good value only.
+  CREATE TABLE feed_values (
+    feed TEXT NOT NULL,
+    key TEXT NOT NULL,
+    data TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (feed, key)
+  ) WITHOUT ROWID;
+
+  -- Watts Up: one row per UTC half-hour. Times are ms since the epoch.
+  CREATE TABLE wattsup_slots (
+    slot_start_utc INTEGER PRIMARY KEY,
+    slot_end_utc INTEGER NOT NULL,
+    local_date TEXT NOT NULL,
+    settlement_period INTEGER NOT NULL,
+    fuel_sample_count INTEGER,
+    fuel_expected_samples INTEGER NOT NULL DEFAULT 6,
+    generation_by_fuel_mw TEXT,
+    domestic_generation_mw REAL,
+    interconnector_flows_mw TEXT,
+    interconnector_import_mw REAL,
+    interconnector_export_mw REAL,
+    pumped_generation_mw REAL,
+    pumped_storage_demand_mw REAL,
+    national_demand_mw REAL,
+    transmission_demand_mw REAL,
+    station_load_mw REAL,
+    demand_forecast_mw REAL,
+    national_demand_forecast_mw REAL,
+    indicated_generation_mw REAL,
+    carbon_actual_g_per_kwh REAL,
+    carbon_forecast_g_per_kwh REAL,
+    carbon_index TEXT,
+    wholesale_gbp_per_mwh REAL,
+    agile_p_per_kwh_inc_vat REAL,
+    agile_p_per_kwh_exc_vat REAL,
+    home_solar_w REAL,
+    home_solar_samples INTEGER,
+    generation_publish_time INTEGER,
+    demand_publish_time INTEGER,
+    demand_forecast_publish_time INTEGER,
+    indgen_publish_time INTEGER,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX wattsup_slots_date ON wattsup_slots(local_date);
+
+  -- Raw FUELINST readings (newest publish per five-minute time and fuel), so slot averages can be
+  -- rebuilt as late readings arrive or if the rules change.
+  CREATE TABLE wattsup_fuel_obs (
+    start_utc INTEGER NOT NULL,
+    fuel TEXT NOT NULL,
+    generation_mw REAL NOT NULL,
+    publish_time INTEGER NOT NULL,
+    PRIMARY KEY (start_utc, fuel)
+  ) WITHOUT ROWID;
+
+  CREATE TABLE wattsup_dfs_events (
+    delivery_date TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    start_utc INTEGER NOT NULL,
+    end_utc INTEGER NOT NULL,
+    event_type TEXT,
+    event_tag TEXT,
+    mw REAL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (delivery_date, event_id)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 export type DB = DatabaseSync;

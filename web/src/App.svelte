@@ -12,6 +12,7 @@
   import Endpoints from "./views/Endpoints.svelte";
   import EndpointView from "./views/EndpointView.svelte";
   import DataView from "./views/DataView.svelte";
+  import FeedView from "./views/FeedView.svelte";
 
   onMount(async () => {
     const s = await api.get<{ signedIn: boolean }>("/session").catch(() => ({ signedIn: false }));
@@ -39,6 +40,8 @@
     {#key route.parts[1]}<EndpointView id={Number(route.parts[1])} step={route.parts[2] ?? "pick"} />{/key}
   {:else if section === "endpoints"}
     <Endpoints />
+  {:else if section === "feeds"}
+    <FeedView tab={route.parts[2] ?? "sources"} />
   {:else if section === "data"}
     <DataView />
   {:else}

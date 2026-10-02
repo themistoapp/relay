@@ -5,8 +5,9 @@ import { definitionSchema, endpointSchema, parse, slugSchema } from "./schemas.j
 import type { Endpoint } from "../db/store.js";
 
 export const endpointRoutes =
-  ({ store, renderer }: AdminDeps): FastifyPluginAsync =>
+  ({ store, renderer, wattsUp }: AdminDeps): FastifyPluginAsync =>
   async (app) => {
+    const taken = (slug: string, exceptId?: number) => store.slugTaken(slug, exceptId) || wattsUp.settings().slug === slug;
     const dayStart = () => Date.now() - 86_400_000;
     const withStats = (e: Endpoint) => ({
       ...e,
@@ -28,7 +29,7 @@ export const endpointRoutes =
       const s = parse(slugSchema, base);
       if (!s.ok) return reply.code(400).send({ error: s.error });
       let slug = base;
-      for (let i = 2; store.slugTaken(slug); i++) slug = `${base}-${i}`;
+      for (let i = 2; taken(slug); i++) slug = `${base}-${i}`;
       return store.createEndpoint({
         slug,
         name,
@@ -48,6 +49,7 @@ export const endpointRoutes =
       const p = parse(endpointSchema, req.body);
       if (!p.ok) return reply.code(400).send({ error: p.error });
       if (store.slugTaken(p.value.slug, id)) return reply.code(409).send({ error: `Another endpoint already uses /v1/${p.value.slug}.` });
+      if (wattsUp.settings().slug === p.value.slug) return reply.code(409).send({ error: `The Watts Up feed is served at /v1/${p.value.slug}.` });
       const e = store.updateEndpoint(id, p.value);
       if (!e) return reply.code(404).send({ error: "No such endpoint." });
       renderer.forget(id);

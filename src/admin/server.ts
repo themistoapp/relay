@@ -15,6 +15,8 @@ import { endpointRoutes } from "./endpoints.js";
 import { historyRoutes } from "./history.js";
 import { dataRoutes } from "./data.js";
 import { historiesRoutes } from "./histories.js";
+import { feedRoutes } from "./feeds.js";
+import type { WattsUpFeed } from "../feeds/wattsup/feed.js";
 
 export interface AdminDeps {
   env: Env;
@@ -22,6 +24,7 @@ export interface AdminDeps {
   scheduler: Scheduler;
   renderer: EndpointRenderer;
   secrets: Secrets;
+  wattsUp: WattsUpFeed;
   /** A pino logger to share, or false for none. */
   logger?: FastifyBaseLogger | boolean;
   /** Where the built admin UI lives; defaults to dist/web next to the compiled server. */
@@ -101,6 +104,7 @@ export function buildAdminServer(deps: AdminDeps): FastifyInstance {
   app.register(endpointRoutes(deps), { prefix: "/admin/api" });
   app.register(dataRoutes(deps), { prefix: "/admin/api" });
   app.register(historiesRoutes(deps), { prefix: "/admin/api" });
+  app.register(feedRoutes(deps), { prefix: "/admin/api" });
 
   const webDir = deps.webDir ?? fileURLToPath(new URL("../web", import.meta.url));
   const hasWeb = existsSync(webDir + "/index.html");

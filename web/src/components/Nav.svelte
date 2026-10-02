@@ -22,6 +22,7 @@
   {#if signedIn}
     <a class="nav-link" class:active={section === "sources"} href="#/sources">Sources</a>
     <a class="nav-link" class:active={section === "endpoints"} href="#/endpoints">Endpoints</a>
+    <a class="nav-link" class:active={section === "feeds"} href="#/feeds">Feeds</a>
     <a class="nav-link" class:active={section === "data"} href="#/data">Data</a>
   {/if}
   <button class="theme-btn" type="button" aria-label="Toggle light and dark theme" onclick={toggleTheme}>

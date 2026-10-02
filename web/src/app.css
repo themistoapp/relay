@@ -117,6 +117,8 @@ p { margin: 0; }
 :root[data-theme="dark"] .theme-btn .i-sun { display: none; }
 :root[data-theme="dark"] .theme-btn .i-moon { display: block; }
 @media (max-width: 480px) { .nav-link { padding: 8px 9px; } .nav-brand span { display: none; } }
+@media (max-width: 420px) { .nav { gap: 0; padding-left: 6px; width: calc(100vw - 24px); } .nav-brand { padding-right: 4px; } .nav-link { padding: 8px 7px; font-size: .8rem; } .theme-btn { width: 32px; } }
+@media (max-width: 380px) { .nav-link { padding: 8px 5px; } .theme-btn { width: 30px; } }
 
 /* ---------- Page ---------- */
 .page { position: relative; z-index: 1; max-width: 1140px; margin: 0 auto; padding: 88px 16px 64px; display: grid; gap: 18px; }
